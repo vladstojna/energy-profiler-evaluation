@@ -23,6 +23,12 @@ namespace tp
 
 namespace
 {
+    std::chrono::duration<double>
+        get_duration(const tp::time_point& start, const tp::time_point& end)
+    {
+        return std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+    }
+
     struct simple_printer : tp::printer::impl
     {
         tp::time_point start;
@@ -35,6 +41,7 @@ namespace
         ~simple_printer()
         {
             auto end = tp::time_point::clock::now();
+            os << "#duration,s," << get_duration(start, end).count() << "\n";
             os << "count,time\n";
             os << 0 << "," << start.time_since_epoch().count() << "\n";
             os << 1 << "," << end.time_since_epoch().count() << "\n";
@@ -71,6 +78,7 @@ namespace
             }
             cv.notify_one();
             thread.join();
+            os << "#duration,s," << get_duration(samples.front(), samples.back()).count() << "\n";
             os << "count,time\n";
             for (std::size_t ix = 0; ix < samples.size(); ix++)
                 os << ix << "," << samples[ix].time_since_epoch().count() << "\n";
