@@ -45,7 +45,7 @@ debug ?=
 ifdef debug
 cflags += -Og -g
 else
-cflags += -O3
+cflags += -O3 -DNDEBUG
 endif
 
 .PHONY: default remake clean
