@@ -1,4 +1,5 @@
 #include <timeprinter/printer.hpp>
+#include <util/to_scalar.hpp>
 
 #include <cassert>
 #include <charconv>
@@ -11,15 +12,6 @@
 
 namespace
 {
-    template<typename T>
-    void to_scalar(std::string_view str, T& value)
-    {
-        auto [dummy, ec] = std::from_chars(str.begin(), str.end(), value);
-        (void)dummy;
-        if (auto code = std::make_error_code(ec))
-            throw std::system_error(code);
-    }
-
     struct cmdargs
     {
         std::size_t count = 0;
@@ -33,11 +25,11 @@ namespace
                 print_usage(argv[0]);
                 throw std::invalid_argument("Not enough arguments");
             }
-            to_scalar(argv[1], count);
+            util::to_scalar(argv[1], count);
             if (argc > 2)
-                to_scalar(argv[2], lower);
+                util::to_scalar(argv[2], lower);
             if (argc > 3)
-                to_scalar(argv[3], upper);
+                util::to_scalar(argv[3], upper);
             if (lower >= upper)
             {
                 print_usage(argv[0]);
