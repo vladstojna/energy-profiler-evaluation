@@ -1,4 +1,9 @@
+#if defined V_USE_OPENBLAS
 #include <cblas.h>
+#elif defined V_USE_MKL
+#include <mkl.h>
+#endif
+
 #include <timeprinter/printer.hpp>
 
 #include <algorithm>
