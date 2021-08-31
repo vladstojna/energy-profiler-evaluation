@@ -5,7 +5,7 @@
 
 namespace
 {
-    void sleep(const std::chrono::milliseconds& dur)
+    __attribute__((noinline)) void sleep(const std::chrono::milliseconds& dur)
     {
         std::this_thread::sleep_for(dur);
     }
