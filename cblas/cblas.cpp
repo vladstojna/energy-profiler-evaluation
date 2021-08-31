@@ -5,6 +5,7 @@
 #endif
 
 #include <timeprinter/printer.hpp>
+#include <util/to_scalar.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -141,8 +142,8 @@ namespace
                     return std::tolower(c);
                 });
 
-            m = get_dimension(argv[2]);
-            n = get_dimension(argv[3]);
+            util::to_scalar(argv[2], m);
+            util::to_scalar(argv[3], n);
             if (op_type == "dgemv")
                 func = dgemv;
             else
@@ -152,7 +153,7 @@ namespace
                     print_usage(argv[0]);
                     throw std::invalid_argument(op_type.append(": not enough arguments"));
                 }
-                k = get_dimension(argv[4]);
+                util::to_scalar(argv[4], k);
                 if (op_type == "dgemm")
                     func = dgemm;
                 else if (op_type == "dgemm_notrans")
@@ -180,16 +181,6 @@ namespace
         {
             std::cerr << "Usage: " << prog
                 << " {dgemm,dgemm_notrans,sgemm,dgemv} <m> <n> <k>\n";
-        }
-
-        std::size_t get_dimension(std::string_view str)
-        {
-            int value;
-            auto [dummy, ec] = std::from_chars(str.begin(), str.end(), value);
-            (void)dummy;
-            if (auto code = std::make_error_code(ec))
-                throw std::system_error(code);
-            return value;
         }
     };
 }
