@@ -10,7 +10,7 @@ ifeq (,$(filter $(impl), $(lpk) $(mkl)))
 $(error unsupported implementation $(impl))
 endif
 
-incls := ../timeprinter/include
+incls := ../timeprinter/include ../include
 libs  := ../timeprinter/lib
 cpp   :=
 

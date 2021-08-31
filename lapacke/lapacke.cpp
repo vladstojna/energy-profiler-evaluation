@@ -5,6 +5,7 @@
 #endif
 
 #include <timeprinter/printer.hpp>
+#include <util/to_scalar.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -30,7 +31,7 @@ namespace
             throw std::runtime_error("Error during computation");
     }
 
-    void dgesv(std::size_t N,
+    __attribute__((noinline)) void dgesv(std::size_t N,
         std::size_t Nrhs,
         std::mt19937_64& engine,
         std::uniform_real_distribution<double>& dist)
@@ -53,7 +54,7 @@ namespace
         handle_error(res);
     }
 
-    void sgesv(std::size_t N,
+    __attribute__((noinline)) void sgesv(std::size_t N,
         std::size_t Nrhs,
         std::mt19937_64& engine,
         std::uniform_real_distribution<double>& dist)
@@ -103,8 +104,8 @@ namespace
                     return std::tolower(c);
                 });
 
-            n = get_dimension(argv[2]);
-            nrhs = get_dimension(argv[3]);
+            util::to_scalar(argv[2], n);
+            util::to_scalar(argv[3], nrhs);
             if (op_type == "dgesv")
                 func = dgesv;
             else if (op_type == "sgesv")
@@ -128,16 +129,6 @@ namespace
         void print_usage(const char* prog)
         {
             std::cerr << "Usage: " << prog << " {dgesv,sgesv} <n> <nrhs>\n";
-        }
-
-        std::size_t get_dimension(std::string_view str)
-        {
-            int value;
-            auto [dummy, ec] = std::from_chars(str.begin(), str.end(), value);
-            (void)dummy;
-            if (auto code = std::make_error_code(ec))
-                throw std::system_error(code);
-            return value;
         }
     };
 }
