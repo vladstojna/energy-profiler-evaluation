@@ -3,7 +3,7 @@ src     := $(wildcard *.cpp)
 obj     := $(patsubst %.cpp, %.o, $(src))
 deps    := $(patsubst %.cpp, %.d, $(src))
 
-incls := ../timeprinter/include
+incls := ../timeprinter/include ../include
 libs  := ../timeprinter/lib
 
 cc      := g++

@@ -1,4 +1,5 @@
 #include <timeprinter/printer.hpp>
+#include <util/to_scalar.hpp>
 
 #include <charconv>
 #include <thread>
@@ -14,15 +15,6 @@ namespace
     {
         std::cerr << "Usage: " << prog << " <ms>\n";
     }
-
-    template<typename T>
-    void to_scalar(std::string_view str, T& value)
-    {
-        auto [dummy, ec] = std::from_chars(str.begin(), str.end(), value);
-        (void)dummy;
-        if (auto code = std::make_error_code(ec))
-            throw std::system_error(code);
-    }
 }
 
 int main(int argc, char** argv)
@@ -34,8 +26,7 @@ int main(int argc, char** argv)
             print_usage(argv[0]);
             throw std::invalid_argument("Not enough arguments");
         }
-        std::chrono::milliseconds::rep ms;
-        to_scalar(argv[1], ms);
+        auto ms = util::to_scalar<std::chrono::milliseconds::rep>(argv[1]);
         tp::printer tpr;
         sleep(std::chrono::milliseconds(ms));
     }
