@@ -52,7 +52,7 @@ namespace
         }
     };
 
-    void generate(
+    __attribute__((noinline)) void generate(
         std::vector<std::mt19937_64>& engines,
         std::size_t count,
         double lower,
