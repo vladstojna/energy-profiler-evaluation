@@ -22,7 +22,7 @@ namespace
         };
     }
 
-    void dgemm_no_transpose(
+    __attribute__((noinline)) void dgemm_no_transpose(
         std::size_t M,
         std::size_t N,
         std::size_t K,
@@ -45,7 +45,7 @@ namespace
         );
     }
 
-    void dgemm(
+    __attribute__((noinline)) void dgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
@@ -68,7 +68,7 @@ namespace
         );
     }
 
-    void dgemv(
+    __attribute__((noinline)) void dgemv(
         std::size_t M,
         std::size_t N,
         std::size_t,
@@ -89,7 +89,7 @@ namespace
             0, y.data(), 1);
     }
 
-    void sgemm(
+    __attribute__((noinline)) void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,

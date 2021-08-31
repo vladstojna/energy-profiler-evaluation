@@ -23,7 +23,7 @@ cpp   += V_USE_OPENBLAS
 endif
 
 cc      := g++
-cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE -pthread
+cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE -pthread -g
 cflags  += -std=c++17
 cflags  += $(addprefix -I, $(incls))
 cflags  += $(addprefix -D, $(cpp))
@@ -33,17 +33,17 @@ cflags += -m64
 endif
 
 ldflags := $(addprefix -L, $(libs))
-ldflags += -l:libtimeprinter.a
+ldflags += -l:libtimeprinter.a -lpthread
 
 ifeq ($(impl), $(mkl))
-ldflags += -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -ldl
+ldflags += -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lm -ldl
 else
-ldflags += -lcblas -lopenblas -lpthread
+ldflags += -lcblas
 endif
 
 debug ?=
 ifdef debug
-cflags += -Og -g
+cflags += -Og
 else
 cflags += -O3 -DNDEBUG
 endif
