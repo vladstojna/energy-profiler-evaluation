@@ -23,7 +23,7 @@ cpp   += V_USE_BASELINE
 endif
 
 cc      := g++
-cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE
+cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE -g
 cflags  += -std=c++17
 cflags  += $(addprefix -I, $(incls))
 cflags  += $(addprefix -D, $(cpp))
@@ -43,7 +43,7 @@ endif
 
 debug ?=
 ifdef debug
-cflags += -Og -g
+cflags += -Og
 else
 cflags += -O3 -DNDEBUG
 endif
