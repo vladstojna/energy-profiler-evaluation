@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <sections>
+
+        <section target="cpu" label="dgemm_no_transpose">
+            <bounds>
+                <func name="(anonymous namespace)::dgemm_no_transpose"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dgemm">
+            <bounds>
+                <func name="(anonymous namespace)::dgemm("/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="sgemm">
+            <bounds>
+                <func name="(anonymous namespace)::sgemm"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dgemv">
+            <bounds>
+                <func name="(anonymous namespace)::dgemv"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+    </sections>
+
+</config>
