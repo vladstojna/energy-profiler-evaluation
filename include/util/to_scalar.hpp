@@ -6,7 +6,7 @@
 #if __GNUC__ < 11
 #include <cstdlib>
 #include <locale>
-#endif
+#endif // __GNUC__ < 11
 
 namespace util
 {
@@ -26,23 +26,18 @@ namespace util
         template<typename Real, typename Func>
         void to_scalar_impl(std::string_view str, Real& value, Func func)
         {
-            auto loc = std::setlocale(0, nullptr);
-            if (!loc)
-                throw std::runtime_error("Error querying locale");
-            if (!std::setlocale(LC_ALL, "C"))
-                throw std::runtime_error("Error setting locale");
             std::string tmp(str);
+            std::locale loc;
+            std::locale::global(std::locale::classic());
             errno = 0;
             Real val = func(tmp.c_str(), nullptr);
             if (errno)
             {
-                if (!std::setlocale(LC_ALL, loc))
-                    throw std::runtime_error("Error setting locale");
+                std::locale::global(loc);
                 throw std::system_error(
                     std::error_code(static_cast<int>(errno), std::generic_category()));
             }
-            if (!std::setlocale(LC_ALL, loc))
-                throw std::runtime_error("Error setting locale");
+            std::locale::global(loc);
             value = val;
         }
     }
