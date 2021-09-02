@@ -1,4 +1,4 @@
-#if defined V_USE_BASELINE
+#if defined V_USE_OPENBLAS
 #include <lapacke.h>
 #elif defined V_USE_MKL
 #include <mkl.h>
