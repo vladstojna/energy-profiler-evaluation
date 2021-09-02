@@ -61,7 +61,7 @@ ldflags += $(rpath)
 ifeq ($(impl), $(mkl))
 ldflags += -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lm -ldl
 else
-ldflags += -lopenblas
+ldflags += -lopenblas -lgfortran
 
 ifdef NO_LAPACKE_SYMS
 ldflags += -llapacke
