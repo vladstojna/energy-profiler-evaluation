@@ -116,9 +116,9 @@ namespace
                 timer t(dur);
                 generate(engines, count, 0.0, 1.0);
             }
-            auto ratio = std::chrono::duration_cast<std::chrono::duration<double>>(period) / dur;
             if (is_accurate(dur, period, tolerance))
                 return count;
+            auto ratio = std::chrono::duration_cast<std::chrono::duration<double>>(period) / dur;
             count *= ratio;
         };
         throw std::runtime_error("Reached max iterations without satisfying accuracy");
