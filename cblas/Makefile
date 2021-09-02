@@ -28,7 +28,6 @@ rpath += -Wl,-rpath,$(MKLROOT)/lib/intel64
 endif # USE_RPATH
 
 else
-OPENBLAS_ROOT ?=
 
 ifdef OPENBLAS_ROOT
 incls += $(OPENBLAS_ROOT)/include

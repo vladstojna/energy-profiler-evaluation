@@ -19,8 +19,11 @@ USE_RPATH ?=
 rpath :=
 
 ifeq ($(impl), $(mkl))
+
+ifdef MKLROOT
 incls += $(MKLROOT)/include
 libs  += $(MKLROOT)/lib/intel64
+endif # MKLROOT
 cpp   += MKL_ILP64 V_USE_MKL
 
 ifdef USE_RPATH
@@ -28,7 +31,6 @@ rpath += -Wl,-rpath,$(MKLROOT)/lib/intel64
 endif # USE_RPATH
 
 else
-OPENBLAS_ROOT ?=
 
 ifdef OPENBLAS_ROOT
 incls += $(OPENBLAS_ROOT)/include
