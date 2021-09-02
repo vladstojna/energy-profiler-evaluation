@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <sections>
+        <section target="cpu">
+            <bounds>
+                <func name="(anonymous namespace)::do_work"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>50</interval>
+        </section>
+    </sections>
+
+</config>
