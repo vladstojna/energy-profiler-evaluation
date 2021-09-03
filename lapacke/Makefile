@@ -4,9 +4,9 @@ obj     := $(patsubst %.cpp, %.o, $(src))
 deps    := $(patsubst %.cpp, %.d, $(src))
 
 mkl   := intel-mkl
-lpk   := lapacke
-impl  ?= $(lpk)
-ifeq (,$(filter $(impl), $(lpk) $(mkl)))
+oblas := openblas
+impl  ?= $(oblas)
+ifeq (,$(filter $(impl), $(oblas) $(mkl)))
 $(error unsupported implementation $(impl))
 endif
 
@@ -14,13 +14,35 @@ incls := ../timeprinter/include ../include
 libs  := ../timeprinter/lib
 cpp   :=
 
+NO_LAPACKE_SYMS ?=
+USE_RPATH ?=
+rpath :=
+
 ifeq ($(impl), $(mkl))
-incls += /opt/intel/mkl/include
+
+ifdef MKLROOT
+incls += $(MKLROOT)/include
 libs  += $(MKLROOT)/lib/intel64
+endif # MKLROOT
 cpp   += MKL_ILP64 V_USE_MKL
+
+ifdef USE_RPATH
+rpath += -Wl,-rpath,$(MKLROOT)/lib/intel64
+endif # USE_RPATH
+
 else
-cpp   += V_USE_BASELINE
-endif
+
+ifdef OPENBLAS_ROOT
+incls += $(OPENBLAS_ROOT)/include
+libs  += $(OPENBLAS_ROOT)/lib
+endif # OPENBLAS_ROOT
+cpp   += V_USE_OPENBLAS
+
+ifdef USE_RPATH
+rpath += -Wl,-rpath,$(OPENBLAS_ROOT)/lib
+endif # USE_RPATH
+
+endif # ($(impl), $(mkl))
 
 cc      := g++
 cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE -g
@@ -32,14 +54,20 @@ ifeq ($(impl), $(mkl))
 cflags += -m64
 endif
 
-ldflags := $(addprefix -L, $(libs))
+ldflags += $(addprefix -L, $(libs))
 ldflags += -l:libtimeprinter.a -lpthread
+ldflags += $(rpath)
 
 ifeq ($(impl), $(mkl))
 ldflags += -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lm -ldl
 else
+ldflags += -lopenblas -lgfortran
+
+ifdef NO_LAPACKE_SYMS
 ldflags += -llapacke
 endif
+
+endif # ($(impl), $(mkl))
 
 debug ?=
 ifdef debug
