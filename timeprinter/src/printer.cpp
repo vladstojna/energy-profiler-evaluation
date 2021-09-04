@@ -12,9 +12,11 @@ namespace tp
     struct printer::impl
     {
         std::ostream& os;
+        std::string ctx;
 
-        impl(std::ostream& os) :
-            os(os)
+        impl(std::string_view ctx, std::ostream& os) :
+            os(os),
+            ctx(ctx)
         {}
 
         virtual ~impl() = default;
@@ -34,8 +36,8 @@ namespace
     {
         std::vector<tp::time_point> samples;
 
-        simple_printer(std::ostream& os) :
-            impl(os)
+        simple_printer(std::string_view ctx, std::ostream& os) :
+            impl(ctx, os)
         {
             samples.reserve(2);
             samples.push_back(tp::time_point::clock::now());
@@ -49,6 +51,7 @@ namespace
         ~simple_printer()
         {
             auto end = tp::time_point::clock::now();
+            os << "#context," << ctx << "\n";
             os << "#duration,s," << get_duration(samples.front(), end).count() << "\n";
             os << "count,time\n";
             for (std::size_t ix = 0; ix < samples.size(); ix++)
@@ -66,8 +69,8 @@ namespace
 
         std::vector<tp::time_point> samples;
 
-        periodic_printer(const tp::period_data& data, std::ostream& os) :
-            impl(os),
+        periodic_printer(std::string_view ctx, const tp::period_data& data, std::ostream& os) :
+            impl(ctx, os),
             finished(false)
         {
             samples.reserve(data.initial_size);
@@ -93,6 +96,7 @@ namespace
             }
             cv.notify_one();
             thread.join();
+            os << "#context," << ctx << "\n";
             os << "#duration,s," << get_duration(samples.front(), samples.back()).count() << "\n";
             os << "count,time\n";
             for (std::size_t ix = 0; ix < samples.size(); ix++)
@@ -115,20 +119,34 @@ namespace
         }
     };
 
-    std::unique_ptr<tp::printer::impl>
-        make_printer(const std::optional<tp::period_data>& periodic, std::ostream& os)
+    std::unique_ptr<tp::printer::impl> make_printer(
+        std::string_view context,
+        const std::optional<tp::period_data>& periodic,
+        std::ostream& os)
     {
         if (periodic)
-            return std::make_unique<periodic_printer>(*periodic, os);
+            return std::make_unique<periodic_printer>(context, *periodic, os);
         else
-            return std::make_unique<simple_printer>(os);
+            return std::make_unique<simple_printer>(context, os);
     }
 }
 
 namespace tp
 {
+    printer::printer(
+        std::string_view context,
+        const std::optional<period_data>& periodic,
+        std::ostream& os)
+        :
+        _impl(make_printer(context, periodic, os))
+    {}
+
+    printer::printer(std::string_view context, std::ostream& os) :
+        printer(context, std::nullopt, os)
+    {}
+
     printer::printer(const std::optional<period_data>& periodic, std::ostream& os) :
-        _impl(make_printer(periodic, os))
+        printer("", periodic, os)
     {}
 
     printer::printer(std::ostream& os) :

@@ -20,6 +20,8 @@ namespace tp
 
         printer(std::ostream & = std::cout);
         printer(const std::optional<period_data>&, std::ostream & = std::cout);
+        printer(std::string_view, std::ostream & = std::cout);
+        printer(std::string_view, const std::optional<period_data>&, std::ostream & = std::cout);
 
         ~printer();
 
