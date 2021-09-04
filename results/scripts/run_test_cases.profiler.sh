@@ -72,6 +72,9 @@ function execute_command
         (sleep)
             $prof --no-idle -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv
             ;;
+        (alternating)
+            sed 's|<interval>.*</interval>|<interval>20</interval>|g' $configs/$1.xml | \
+                $prof --no-idle -q -o $3.json -- $2 > $3.app.csv
         (*)
             $prof -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv
             ;;
