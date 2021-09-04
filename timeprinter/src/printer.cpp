@@ -18,6 +18,7 @@ namespace tp
         {}
 
         virtual ~impl() = default;
+        virtual void sample() = 0;
     };
 }
 
@@ -31,20 +32,28 @@ namespace
 
     struct simple_printer : tp::printer::impl
     {
-        tp::time_point start;
+        std::vector<tp::time_point> samples;
 
         simple_printer(std::ostream& os) :
-            impl(os),
-            start(tp::time_point::clock::now())
-        {};
+            impl(os)
+        {
+            samples.reserve(2);
+            samples.push_back(tp::time_point::clock::now());
+        };
+
+        void sample() override
+        {
+            samples.push_back(tp::time_point::clock::now());
+        }
 
         ~simple_printer()
         {
             auto end = tp::time_point::clock::now();
-            os << "#duration,s," << get_duration(start, end).count() << "\n";
+            os << "#duration,s," << get_duration(samples.front(), end).count() << "\n";
             os << "count,time\n";
-            os << 0 << "," << start.time_since_epoch().count() << "\n";
-            os << 1 << "," << end.time_since_epoch().count() << "\n";
+            for (std::size_t ix = 0; ix < samples.size(); ix++)
+                os << ix << "," << samples[ix].time_since_epoch().count() << "\n";
+            os << samples.size() << "," << end.time_since_epoch().count() << "\n";
         };
     };
 
@@ -68,6 +77,12 @@ namespace
                 samples.push_back(tp::time_point::clock::now());
             }
         };
+
+        void sample() override
+        {
+            std::scoped_lock lk(mtx);
+            samples.push_back(tp::time_point::clock::now());
+        }
 
         ~periodic_printer()
         {
@@ -121,4 +136,9 @@ namespace tp
     {}
 
     printer::~printer() = default;
+
+    void printer::sample()
+    {
+        _impl->sample();
+    }
 }
