@@ -47,11 +47,11 @@ if [[ -z $configs ]]; then
     usage 1
 fi
 if [[ -z $prof ]]; then
-    if [[ -z $GPR_PROFILER_BIN ]]; then
-        echoerr "Option -p not provided and environment variable GPR_PROFILER_BIN not set"
+    if [[ -z $ENERGY_PROFILER_BIN ]]; then
+        echoerr "Option -p not provided and environment variable ENERGY_PROFILER_BIN not set"
         usage 1
     fi
-    prof=$GPR_PROFILER_BIN
+    prof=$ENERGY_PROFILER_BIN
 fi
 if [[ -z $what ]]; then
     what=$default_work
