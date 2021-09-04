@@ -1,14 +1,14 @@
-target  := lapacke.out
-src     := $(wildcard *.cpp)
-obj     := $(patsubst %.cpp, %.o, $(src))
-deps    := $(patsubst %.cpp, %.d, $(src))
-
 mkl   := intel-mkl
 oblas := openblas
 impl  ?= $(oblas)
 ifeq (,$(filter $(impl), $(oblas) $(mkl)))
-$(error unsupported implementation $(impl))
+$(error unsupported implementation $(impl): supported '$(mkl)' '$(oblas)')
 endif
+
+target  ?= lapacke-$(impl).out
+src     := $(wildcard *.cpp)
+obj     := $(patsubst %.cpp, %-$(impl).o, $(src))
+deps    := $(patsubst %.cpp, %-$(impl).d, $(src))
 
 incls := ../timeprinter/include ../include
 libs  := ../timeprinter/lib
@@ -76,15 +76,15 @@ else
 cflags += -O3 -DNDEBUG
 endif
 
-.PHONY: default remake clean
+.PHONY: default remake clean purge
 
 default: $(target)
 
 $(target): $(obj)
 	$(cc) $^ $(ldflags) -o $@
 
-%.o: %.cpp %.d
-	$(cc) -MT $@ -MMD -MP -MF $*.d $(cflags) -c -o $@ $<
+%-$(impl).o: %.cpp %-$(impl).d
+	$(cc) -MT $@ -MMD -MP -MF $*-$(impl).d $(cflags) -c -o $@ $<
 
 $(deps):
 
@@ -94,3 +94,6 @@ remake: clean default
 
 clean:
 	rm -rf $(target) $(deps) $(obj)
+
+purge:
+	rm -rf *.o *.out *.d
