@@ -10,7 +10,7 @@ namespace tp
     struct period_data
     {
         std::chrono::nanoseconds interval;
-        std::size_t initial_size = 0;
+        std::size_t initial_size = 2;
     };
 
     class printer
@@ -22,6 +22,8 @@ namespace tp
         printer(const std::optional<period_data>&, std::ostream & = std::cout);
 
         ~printer();
+
+        void sample();
 
         printer(const printer&) = delete;
         printer(printer&&) = delete;
