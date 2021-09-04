@@ -17,14 +17,6 @@ namespace
 {
     namespace detail
     {
-        auto get_gen(std::mt19937_64& engine, std::uniform_real_distribution<double>& dist)
-        {
-            return [&]()
-            {
-                return dist(engine);
-            };
-        }
-
         void handle_error(int res)
         {
             if (res > 0)
@@ -34,22 +26,20 @@ namespace
         }
 
         template<typename Real, typename Func>
-        void gesv_impl(
-            Func func,
-            std::size_t N,
-            std::size_t Nrhs,
-            std::mt19937_64& engine,
-            std::uniform_real_distribution<double>& dist)
+        void gesv_impl(Func func, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::printer tpr;
             std::vector<Real> a(N * N);
             std::vector<Real> b(N * Nrhs);
             std::vector<lapack_int> ipiv(N);
 
-            auto gen = get_gen(engine, dist);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            tp::printer tpr;
+            tpr.sample();
             int res = func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
             handle_error(res);
         }
@@ -60,17 +50,19 @@ namespace
             std::size_t M,
             std::size_t N,
             std::size_t Nrhs,
-            std::mt19937_64& engine,
-            std::uniform_real_distribution<double>& dist)
+            std::mt19937_64& engine)
         {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::printer tpr;
             std::vector<Real> a(M * N);
             std::vector<Real> b(std::max(N, M) * Nrhs);
 
-            auto gen = get_gen(engine, dist);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            tp::printer tpr;
+            tpr.sample();
             int res = func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
             handle_error(res);
         }
@@ -80,47 +72,42 @@ namespace
         std::size_t,
         std::size_t,
         std::size_t,
-        std::mt19937_64&,
-        std::uniform_real_distribution<double>&);
+        std::mt19937_64&);
 
     __attribute__((noinline)) void dgesv(
         std::size_t,
         std::size_t N,
         std::size_t Nrhs,
-        std::mt19937_64& engine,
-        std::uniform_real_distribution<double>& dist)
+        std::mt19937_64& engine)
     {
-        detail::gesv_impl<double>(LAPACKE_dgesv, N, Nrhs, engine, dist);
+        detail::gesv_impl<double>(LAPACKE_dgesv, N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void sgesv(
         std::size_t,
         std::size_t N,
         std::size_t Nrhs,
-        std::mt19937_64& engine,
-        std::uniform_real_distribution<double>& dist)
+        std::mt19937_64& engine)
     {
-        detail::gesv_impl<float>(LAPACKE_sgesv, N, Nrhs, engine, dist);
+        detail::gesv_impl<float>(LAPACKE_sgesv, N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void dgels(
         std::size_t M,
         std::size_t N,
         std::size_t Nrhs,
-        std::mt19937_64& engine,
-        std::uniform_real_distribution<double>& dist)
+        std::mt19937_64& engine)
     {
-        detail::gels_impl<double>(LAPACKE_dgels, M, N, Nrhs, engine, dist);
+        detail::gels_impl<double>(LAPACKE_dgels, M, N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void sgels(
         std::size_t M,
         std::size_t N,
         std::size_t Nrhs,
-        std::mt19937_64& engine,
-        std::uniform_real_distribution<double>& dist)
+        std::mt19937_64& engine)
     {
-        detail::gels_impl<float>(LAPACKE_sgels, M, N, Nrhs, engine, dist);
+        detail::gels_impl<float>(LAPACKE_sgels, M, N, Nrhs, engine);
     }
 
     class cmdparams
@@ -175,11 +162,9 @@ namespace
             assert(func);
         }
 
-        void do_work(
-            std::mt19937_64& engine,
-            std::uniform_real_distribution<double>& dist)
+        void do_work(std::mt19937_64& engine)
         {
-            func(m, n, nrhs, engine, dist);
+            func(m, n, nrhs, engine);
         }
 
     private:
@@ -209,11 +194,10 @@ int main(int argc, char** argv)
 {
     std::random_device rnd_dev;
     std::mt19937_64 engine{ rnd_dev() };
-    std::uniform_real_distribution dist{ 0.0, 1.0 };
     try
     {
         cmdparams params(argc, argv);
-        params.do_work(engine, dist);
+        params.do_work(engine);
     }
     catch (const std::exception& e)
     {
