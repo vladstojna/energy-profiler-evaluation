@@ -5,7 +5,7 @@ source $(dirname "$0")/common_defs.sh
 function usage
 {
     local h="[-h]"
-    local w="[-w <alternating|rng|sleep|mkl|openblas>]"
+    local w="[-w <$(usage_w_string '|')>]"
     local o="[-o <output dir>]"
     local i="[-i <#>]"
     local p="[-p <#>]"
@@ -19,7 +19,7 @@ do
     case $opt in
         w)
             what="${OPTARG}"
-            ! is_valid_work "$what" && usage 1
+            ! is_valid_work "$what" && echoerr "Invalid work type: $what" && usage 1
             ;;
         o)
             outdir="${OPTARG}"

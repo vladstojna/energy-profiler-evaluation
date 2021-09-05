@@ -4,12 +4,13 @@ source $(dirname "$0")/common_defs.sh
 
 function usage
 {
-    local w="[-w <alternating|rng|sleep|mkl|openblas>]"
+    local h="[-h]"
+    local w="[-w <$(usage_w_string '|')>]"
     local p="[-p <profiler path>]"
     local o="[-o <output dir>]"
     local c="[-c <config dir>]"
     local i="[-i <#>]"
-    echo "Usage: $0 $w $p $o $c $i"
+    echo "Usage: $0 $h $w $p $o $c $i"
     exit "$1"
 }
 
@@ -21,7 +22,7 @@ do
             ;;
         w)
             what="${OPTARG}"
-            ! is_valid_work "$what" && usage 1
+            ! is_valid_work "$what" && echoerr "Invalid work type: $what" && usage 1
             ;;
         o)
             outdir="${OPTARG}"

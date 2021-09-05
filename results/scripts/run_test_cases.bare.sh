@@ -5,7 +5,7 @@ source $(dirname "$0")/common_defs.sh
 function usage
 {
     local h="[-h]"
-    local w="[-w <alternating|rng|sleep|mkl|openblas>]"
+    local w="[-w <$(usage_w_string '|')>]"
     local o="[-o <output dir>]"
     local i="[-i <#>]"
     echo "Usage: $0 $h $w $o $i"
@@ -17,7 +17,7 @@ do
     case $opt in
         w)
             what="${OPTARG}"
-            ! is_valid_work "$what" && usage 1
+            ! is_valid_work "$what" && echoerr "Invalid work type: $what" && usage 1
             ;;
         o)
             outdir="${OPTARG}"
@@ -53,7 +53,7 @@ echo "Iterations: $iters"
 
 function execute_command
 {
-    "$2" > "$3".app.csv
+    "$2" > "$3.app.csv"
 }
 
 source $(dirname "$0")/common_loop.sh

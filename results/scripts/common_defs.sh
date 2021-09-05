@@ -1,9 +1,17 @@
+work_types=("alternating" "rng" "sleep" "mkl" "openblas")
+
 function echoerr
 {
     printf "%s\n" "$*" >&2
 }
 
 default_work="all"
+
+function usage_w_string
+{
+    local var=$(printf "$1%s" "${work_types[@]}")
+    echo ${var:1}
+}
 
 function is_candidate
 {
@@ -12,12 +20,13 @@ function is_candidate
 
 function is_valid_work
 {
-    if [[ "$1" == @(alternating|rng|sleep|mkl|openblas) ]]; then
-        true
-    else
-        echoerr "Invalid work type $1"
-        false
-    fi
+    for w in "${work_types[@]}"; do
+        if [[ "$1" == "$w" ]]; then
+            true
+            return
+        fi
+    done
+    false
 }
 
 samples_dir=$(cd $(dirname "$0")/../.. && pwd)
