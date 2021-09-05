@@ -29,6 +29,6 @@ function is_valid_work
     false
 }
 
-samples_dir=$(cd $(dirname "$0")/../.. && pwd)
+samples_dir=$(cd $(dirname "$0")/.. && pwd)
 threads=$(lscpu -b -p=CORE | grep -v '^#' | wc -l)
 cores=$(lscpu -b -p=CORE | grep -v '^#' | sort -u | wc -l)
