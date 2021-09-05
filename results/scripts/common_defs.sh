@@ -1,15 +1,9 @@
-default_work="all"
-
-script=$(dirname "$0")
-samples_dir=$(cd $script/../.. && pwd)
-
-threads=$(lscpu -b -p=CORE | grep -v '^#' | wc -l)
-cores=$(lscpu -b -p=CORE | grep -v '^#' | sort -u | wc -l)
-
 function echoerr
 {
     printf "%s\n" "$*" >&2
 }
+
+default_work="all"
 
 function is_candidate
 {
@@ -25,3 +19,7 @@ function is_valid_work
         false
     fi
 }
+
+samples_dir=$(cd $(dirname "$0")/../.. && pwd)
+threads=$(lscpu -b -p=CORE | grep -v '^#' | wc -l)
+cores=$(lscpu -b -p=CORE | grep -v '^#' | sort -u | wc -l)

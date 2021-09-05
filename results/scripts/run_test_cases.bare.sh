@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source common_defs.sh
+source $(dirname "$0")/common_defs.sh
 
 function usage
 {
@@ -51,4 +51,4 @@ function execute_command
     $2 > $3.app.csv
 }
 
-source common_loop.sh
+source $(dirname "$0")/common_loop.sh
