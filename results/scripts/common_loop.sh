@@ -34,10 +34,22 @@ for i in $(seq 0 $(($iters - 1))); do
     sample_name=alternating
     if is_candidate $what $sample_name; then
         export OMP_NUM_THREADS=$threads
-        cmd="$samples_dir/$sample_name/$sample_name.out 200 50"
-        out="$outdir/$sample_name-200_50-smton.$i"
+
+        cmd="$samples_dir/$sample_name/$sample_name.out 500 20"
+        out="$outdir/$sample_name-500_20-smton.$i"
         echo $cmd
         execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name.out 250 40"
+        out="$outdir/$sample_name-250_40-smton.$i"
+        echo $cmd
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name.out 50 200"
+        out="$outdir/$sample_name-50_200-smton.$i"
+        echo $cmd
+        execute_command "$sample_name" "$cmd" "$out"
+
         unset OMP_NUM_THREADS
     fi
 
