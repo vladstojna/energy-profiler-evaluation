@@ -9,21 +9,21 @@ function usage
     local o="[-o <output dir>]"
     local i="[-i <#>]"
     echo "Usage: $0 $h $w $o $i"
-    exit $1
+    exit "$1"
 }
 
 while getopts "hw:o:i:" opt
 do
     case $opt in
         w)
-            what=${OPTARG}
-            ! is_valid_work $what && usage 1
+            what="${OPTARG}"
+            ! is_valid_work "$what" && usage 1
             ;;
         o)
-            outdir=${OPTARG}
+            outdir="${OPTARG}"
             ;;
         i)
-            iters=${OPTARG}
+            iters="${OPTARG}"
             ;;
         h | *)
             usage 0
@@ -31,14 +31,19 @@ do
     esac
 done
 
-if [[ -z $outdir ]]; then
+if [[ -z "$outdir" ]]; then
     echoerr "Option -o must be provided"
     usage 1
 fi
-if [[ -z $what ]]; then
-    what=$default_work
+if [[ ! -d "$outdir" ]]; then
+    echoerr "$outdir does not exist"
+    exit 1
 fi
-if [[ -z $iters ]]; then
+
+if [[ -z "$what" ]]; then
+    what="$default_work"
+fi
+if [[ -z "$iters" ]]; then
     iters=1
 fi
 
@@ -48,7 +53,7 @@ echo "Iterations: $iters"
 
 function execute_command
 {
-    $2 > $3.app.csv
+    "$2" > "$3".app.csv
 }
 
 source $(dirname "$0")/common_loop.sh

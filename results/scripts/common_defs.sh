@@ -7,7 +7,7 @@ default_work="all"
 
 function is_candidate
 {
-    [[ $1 == $2 ]] || [[ $1 == $default_work ]]
+    [[ "$1" == "$2" ]] || [[ "$1" == "$default_work" ]]
 }
 
 function is_valid_work

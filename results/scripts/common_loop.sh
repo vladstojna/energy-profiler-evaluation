@@ -1,23 +1,23 @@
 for i in $(seq 0 $(($iters - 1))); do
 
-    sample_name=sleep
+    sample_name="sleep"
     if is_candidate $what $sample_name; then
         cmd="$samples_dir/$sample_name/$sample_name.out 20000"
         out="$outdir/$sample_name-20000.$i"
-        echo $cmd
+        echo "$cmd"
         execute_command "$sample_name" "$cmd" "$out"
     fi
 
-    sample_name=rng
+    sample_name="rng"
     if is_candidate $what $sample_name; then
-        export OMP_NUM_THREADS=$threads
+        export OMP_NUM_THREADS="$threads"
 
         cmd="$samples_dir/$sample_name/$sample_name.out 20000000000 0.0 1.0"
         out="$outdir/$sample_name-2e10_0_1-smton.$i"
         echo "$cmd; threads=$OMP_NUM_THREADS"
         execute_command "$sample_name" "$cmd" "$out"
 
-        export OMP_NUM_THREADS=$cores
+        export OMP_NUM_THREADS="$cores"
         out="$outdir/$sample_name-2e10_0_1-smtoff.$i"
         echo "$cmd; threads=$OMP_NUM_THREADS"
         execute_command "$sample_name" "$cmd" "$out"
@@ -31,34 +31,34 @@ for i in $(seq 0 $(($iters - 1))); do
         unset OMP_NUM_THREADS
     fi
 
-    sample_name=alternating
+    sample_name="alternating"
     if is_candidate $what $sample_name; then
-        export OMP_NUM_THREADS=$threads
+        export OMP_NUM_THREADS="$threads"
 
         cmd="$samples_dir/$sample_name/$sample_name.out 500 20"
         out="$outdir/$sample_name-500_20-smton.$i"
-        echo $cmd
+        echo "$cmd"
         execute_command "$sample_name" "$cmd" "$out"
 
         cmd="$samples_dir/$sample_name/$sample_name.out 250 40"
         out="$outdir/$sample_name-250_40-smton.$i"
-        echo $cmd
+        echo "$cmd"
         execute_command "$sample_name" "$cmd" "$out"
 
         cmd="$samples_dir/$sample_name/$sample_name.out 50 200"
         out="$outdir/$sample_name-50_200-smton.$i"
-        echo $cmd
+        echo "$cmd"
         execute_command "$sample_name" "$cmd" "$out"
 
         unset OMP_NUM_THREADS
     fi
 
     if is_candidate $what "openblas"; then
-        export OPENBLAS_NUM_THREADS=$cores
+        export OPENBLAS_NUM_THREADS="$cores"
 
         pref="openblas"
         suff="smtoff.$i"
-        sample_name=cblas
+        sample_name="cblas"
 
         cmd="$samples_dir/$sample_name/$sample_name-$pref.out dgemm 16000 16000 16000"
         out="$outdir/$pref-dgemm_16K_16K_16K-$suff"
@@ -70,7 +70,7 @@ for i in $(seq 0 $(($iters - 1))); do
         echo "$cmd; threads=$OPENBLAS_NUM_THREADS"
         execute_command "$sample_name" "$cmd" "$out"
 
-        sample_name=lapacke
+        sample_name="lapacke"
 
         cmd="$samples_dir/$sample_name/$sample_name-$pref.out dgesv 20000 100"
         out="$outdir/$pref-dgesv_20K_100-$suff"
@@ -108,7 +108,7 @@ for i in $(seq 0 $(($iters - 1))); do
     if is_candidate $what "mkl"; then
         pref="intel_mkl"
         suff="smtoff.$i"
-        sample_name=cblas
+        sample_name="cblas"
 
         cmd="$samples_dir/$sample_name/$sample_name-intel-mkl.out dgemm 16000 16000 16000"
         out="$outdir/$pref-dgemm_16K_16K_16K-$suff"
@@ -120,7 +120,7 @@ for i in $(seq 0 $(($iters - 1))); do
         echo "$cmd"
         execute_command "$sample_name" "$cmd" "$out"
 
-        sample_name=lapacke
+        sample_name="lapacke"
 
         cmd="$samples_dir/$sample_name/$sample_name-intel-mkl.out dgesv 22000 100"
         out="$outdir/$pref-dgesv_22K_100-$suff"

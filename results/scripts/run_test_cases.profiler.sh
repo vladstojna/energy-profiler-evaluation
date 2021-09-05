@@ -10,27 +10,27 @@ function usage
     local c="[-c <config dir>]"
     local i="[-i <#>]"
     echo "Usage: $0 $w $p $o $c $i"
-    exit $1
+    exit "$1"
 }
 
 while getopts "hw:p:c:o:i:" opt
 do
     case $opt in
         p)
-            prof=${OPTARG}
+            prof="${OPTARG}"
             ;;
         w)
-            what=${OPTARG}
-            ! is_valid_work $what && usage 1
+            what="${OPTARG}"
+            ! is_valid_work "$what" && usage 1
             ;;
         o)
-            outdir=${OPTARG}
+            outdir="${OPTARG}"
             ;;
         c)
-            configs=${OPTARG}
+            configs="${OPTARG}"
             ;;
         i)
-            iters=${OPTARG}
+            iters="${OPTARG}"
             ;;
         h | *)
             usage 0
@@ -38,25 +38,40 @@ do
     esac
 done
 
-if [[ -z $outdir ]]; then
+if [[ -z "$outdir" ]]; then
     echoerr "Option -o must be provided"
     usage 1
 fi
-if [[ -z $configs ]]; then
+if [[ ! -d "$outdir" ]]; then
+    echoerr "$outdir does not exist"
+    exit 1
+fi
+
+if [[ -z "$configs" ]]; then
     echoerr "Option -c must be provided"
     usage 1
 fi
-if [[ -z $prof ]]; then
-    if [[ -z $ENERGY_PROFILER_BIN ]]; then
+if [[ ! -d "$configs" ]]; then
+    echoerr "$configs does not exist"
+    exit 1
+fi
+
+if [[ -z "$prof" ]]; then
+    if [[ -z "$ENERGY_PROFILER_BIN" ]]; then
         echoerr "Option -p not provided and environment variable ENERGY_PROFILER_BIN not set"
         usage 1
     fi
-    prof=$ENERGY_PROFILER_BIN
+    prof="$ENERGY_PROFILER_BIN"
 fi
-if [[ -z $what ]]; then
-    what=$default_work
+if [[ ! -x "$prof" ]]; then
+    echoerr "$prof does not exist or is not an executable"
+    exit 1
 fi
-if [[ -z $iters ]]; then
+
+if [[ -z "$what" ]]; then
+    what="$default_work"
+fi
+if [[ -z "$iters" ]]; then
     iters=1
 fi
 
@@ -68,16 +83,16 @@ echo "Iterations: $iters"
 
 function execute_command
 {
-    case $1 in
+    case "$1" in
         (sleep)
-            $prof --no-idle -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv
+            "$prof" --no-idle -q -c "$configs/$1.xml" -o "$3.json" -- "$2" > "$3.app.csv"
             ;;
         (alternating)
-            sed 's|<interval>.*</interval>|<interval>20</interval>|g' $configs/$1.xml | \
-                $prof -q -o $3.json -- $2 > $3.app.csv
+            sed 's|<interval>.*</interval>|<interval>20</interval>|g' "$configs/$1.xml" | \
+                "$prof" -q -o "$3.json" -- "$2" > "$3.app.csv"
             ;;
         (*)
-            $prof -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv
+            "$prof" -q -c "$configs/$1.xml" -o "$3.json" -- "$2" > "$3.app.csv"
             ;;
     esac
 }
