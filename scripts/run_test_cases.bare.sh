@@ -8,11 +8,12 @@ function usage
     local w="[-w <$(usage_w_string '|')>]"
     local o="[-o <output dir>]"
     local i="[-i <#>]"
-    echo "Usage: $0 $h $w $o $i"
+    local n="[-n]"
+    echo "Usage: $0 $h $w $o $i $n"
     exit "$1"
 }
 
-while getopts "hw:o:i:" opt
+while getopts "hw:o:i:n" opt
 do
     case $opt in
         w)
@@ -24,6 +25,9 @@ do
             ;;
         i)
             iters="${OPTARG}"
+            ;;
+        n)
+            dry_run="true"
             ;;
         h | *)
             usage 0
@@ -51,9 +55,16 @@ echo "Run: $what"
 echo "Output directory: $outdir"
 echo "Iterations: $iters"
 
-function execute_command
-{
-    "$2" > "$3.app.csv"
-}
+if [[ -z "$dry_run" ]]; then
+    function execute_command
+    {
+        "$2" > "$3.app.csv"
+    }
+else
+    function execute_command
+    {
+        echo ">> $2 > $3.app.csv"
+    }
+fi
 
 source $(dirname "$0")/common_loop.sh

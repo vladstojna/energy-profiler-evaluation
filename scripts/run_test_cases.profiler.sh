@@ -10,11 +10,12 @@ function usage
     local o="[-o <output dir>]"
     local c="[-c <config dir>]"
     local i="[-i <#>]"
-    echo "Usage: $0 $h $w $p $o $c $i"
+    local n="[-n]"
+    echo "Usage: $0 $h $w $p $o $c $i $n"
     exit "$1"
 }
 
-while getopts "hw:p:c:o:i:" opt
+while getopts "hw:p:c:o:i:n" opt
 do
     case $opt in
         p)
@@ -32,6 +33,9 @@ do
             ;;
         i)
             iters="${OPTARG}"
+            ;;
+        n)
+            dry_run="true"
             ;;
         h | *)
             usage 0
@@ -64,7 +68,7 @@ if [[ -z "$prof" ]]; then
     fi
     prof="$ENERGY_PROFILER_BIN"
 fi
-if [[ ! -x "$prof" ]]; then
+if ! command -v "$prof" &> /dev/null; then
     echoerr "$prof does not exist or is not an executable"
     exit 1
 fi
@@ -82,20 +86,39 @@ echo "Output directory: $outdir"
 echo "Config directory: $configs"
 echo "Iterations: $iters"
 
-function execute_command
-{
-    case "$1" in
-        (sleep)
-            "$prof" --no-idle -q -c "$configs/$1.xml" -o "$3.json" -- "$2" > "$3.app.csv"
-            ;;
-        (alternating)
-            sed 's|<interval>.*</interval>|<interval>20</interval>|g' "$configs/$1.xml" | \
-                "$prof" -q -o "$3.json" -- "$2" > "$3.app.csv"
-            ;;
-        (*)
-            "$prof" -q -c "$configs/$1.xml" -o "$3.json" -- "$2" > "$3.app.csv"
-            ;;
-    esac
-}
+if [[ -z "$dry_run" ]]; then
+    function execute_command
+    {
+        case "$1" in
+            (sleep)
+                "$prof" --no-idle -q -c "$configs/$1.xml" -o "$3.json" -- "$2" > "$3.app.csv"
+                ;;
+            (alternating)
+                sed 's|<interval>.*</interval>|<interval>20</interval>|g' "$configs/$1.xml" | \
+                    "$prof" -q -o "$3.json" -- "$2" > "$3.app.csv"
+                ;;
+            (*)
+                "$prof" -q -c "$configs/$1.xml" -o "$3.json" -- "$2" > "$3.app.csv"
+                ;;
+        esac
+    }
+else
+    function execute_command
+    {
+        case "$1" in
+            (sleep)
+                echo ">> $prof --no-idle -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv"
+                ;;
+            (alternating)
+                printf ">> %s %s\n" \
+                    "sed 's|<interval>.*</interval>|<interval>20</interval>|g'" \
+                    "$configs/$1.xml | $prof -q -o $3.json -- $2 > $3.app.csv"
+                ;;
+            (*)
+                echo ">> $prof -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv"
+                ;;
+        esac
+    }
+fi
 
 source $(dirname "$0")/common_loop.sh

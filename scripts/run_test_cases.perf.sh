@@ -10,11 +10,12 @@ function usage
     local i="[-i <#>]"
     local p="[-p <#>]"
     local e="[-e <event>]"
-    echo "Usage: $0 $h $w $o $i $p $e"
+    local n="[-n]"
+    echo "Usage: $0 $h $w $o $i $p $e $n"
     exit "$1"
 }
 
-while getopts "hw:o:i:p:" opt
+while getopts "hw:o:i:p:n" opt
 do
     case $opt in
         w)
@@ -32,6 +33,9 @@ do
             ;;
         e)
             event="${OPTARG}"
+            ;;
+        n)
+            dry_run="true"
             ;;
         h | *)
             usage 0
@@ -67,9 +71,16 @@ echo "Iterations: $iters"
 echo "Interval: $period"
 echo "Event: $event"
 
-function execute_command
-{
-    perf stat -o "$3.perf.csv" -a -x, -I "$period" -e "$event" "$2" > "$3.app.csv"
-}
+if [[ -z "$dry_run" ]]; then
+    function execute_command
+    {
+        perf stat -o "$3.perf.csv" -a -x, -I "$period" -e "$event" "$2" > "$3.app.csv"
+    }
+else
+    function execute_command
+    {
+        echo ">> perf stat -o $3.perf.csv -a -x, -I $period -e $event $2 > $3.app.csv"
+    }
+fi
 
 source $(dirname "$0")/common_loop.sh
