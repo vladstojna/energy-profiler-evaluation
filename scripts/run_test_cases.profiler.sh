@@ -53,11 +53,11 @@ if [[ ! -d "$outdir" ]]; then
 fi
 
 if [[ -z "$configs" ]]; then
-    echoerr "Option -c must be provided"
-    usage 1
+    configs="$samples_dir/profiler-config"
+    echo "Option -c not provided, using default: $configs"
 fi
 if [[ ! -d "$configs" ]]; then
-    echoerr "$configs does not exist"
+    echoerr "$configs does not exist or is not a directory"
     exit 1
 fi
 
