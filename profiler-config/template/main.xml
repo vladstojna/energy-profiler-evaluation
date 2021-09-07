@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <config>
+
+    <params>
+        <domain_mask>0xb</domain_mask>
+    </params>
+
     <sections>
         <section target="cpu">
             <bounds>
