@@ -58,7 +58,7 @@ echo "Iterations: $iters"
 if [[ -z "$dry_run" ]]; then
     function execute_command
     {
-        "$2" > "$3.app.csv"
+        $2 > "$3.app.csv"
     }
 else
     function execute_command

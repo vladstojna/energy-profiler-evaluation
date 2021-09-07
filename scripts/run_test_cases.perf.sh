@@ -74,13 +74,14 @@ echo "Event: $event"
 if [[ -z "$dry_run" ]]; then
     function execute_command
     {
-        perf stat -o "$3.perf.csv" -a -x, -I "$period" -e "$event" "$2" > "$3.app.csv"
+        perf stat -o "$3.perf.csv" -a -x, -I "$period" -e "$event" -- $2 > "$3.app.csv"
     }
 else
     function execute_command
     {
-        echo ">> perf stat -o $3.perf.csv -a -x, -I $period -e $event $2 > $3.app.csv"
+        echo ">> perf stat -o $3.perf.csv -a -x, -I $period -e $event -- $2 > $3.app.csv"
     }
 fi
 
+export LC_ALL="C"
 source $(dirname "$0")/common_loop.sh
