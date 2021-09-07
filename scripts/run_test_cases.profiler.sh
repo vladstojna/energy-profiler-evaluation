@@ -11,11 +11,12 @@ function usage
     local c="[-c <config dir>]"
     local i="[-i <#>]"
     local n="[-n]"
-    echo "Usage: $0 $h $w $p $o $c $i $n"
+    local m="[-m]"
+    echo "Usage: $0 $h $w $p $o $c $i $n $m"
     exit "$1"
 }
 
-while getopts "hw:p:c:o:i:n" opt
+while getopts "hw:p:c:o:i:nm" opt
 do
     case $opt in
         p)
@@ -36,6 +37,9 @@ do
             ;;
         n)
             dry_run="true"
+            ;;
+        m)
+            main="main"
             ;;
         h | *)
             usage 0
@@ -86,36 +90,62 @@ echo "Output directory: $outdir"
 echo "Config directory: $configs"
 echo "Iterations: $iters"
 
+if [[ -z "$main" ]]; then
+    function get_config
+    {
+        echo -n "$configs/$1.xml"
+    }
+
+    function get_output
+    {
+        echo -n "$1.json"
+    }
+else
+    function get_config
+    {
+        echo -n "$configs/template/$main.xml"
+    }
+
+    function get_output
+    {
+        echo -n "$1.$main.json"
+    }
+fi
+
 if [[ -z "$dry_run" ]]; then
     function execute_command
     {
+        local cfg=$(get_config "$1")
+        local out=$(get_output "$3")
         case "$1" in
             (sleep)
-                "$prof" --no-idle -q -c "$configs/$1.xml" -o "$3.json" -- $2 > "$3.app.csv"
+                "$prof" --no-idle -q -c "$cfg" -o "$out" -- $2 > "$3.app.csv"
                 ;;
             (alternating)
-                sed 's|<interval>.*</interval>|<interval>20</interval>|g' "$configs/$1.xml" | \
-                    "$prof" -q -o "$3.json" -- $2 > "$3.app.csv"
+                sed 's|<interval>.*</interval>|<interval>20</interval>|g' "$cfg" | \
+                    "$prof" -q -o "$out" -- $2 > "$3.app.csv"
                 ;;
             (*)
-                "$prof" -q -c "$configs/$1.xml" -o "$3.json" -- $2 > "$3.app.csv"
+                "$prof" -q -c "$cfg" -o "$out" -- $2 > "$3.app.csv"
                 ;;
         esac
     }
 else
     function execute_command
     {
+        local cfg=$(get_config "$1")
+        local out=$(get_output "$3")
         case "$1" in
             (sleep)
-                echo ">> $prof --no-idle -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv"
+                echo ">> $prof --no-idle -q -c $cfg -o $out -- $2 > $3.app.csv"
                 ;;
             (alternating)
                 printf ">> %s %s\n" \
                     "sed 's|<interval>.*</interval>|<interval>20</interval>|g'" \
-                    "$configs/$1.xml | $prof -q -o $3.json -- $2 > $3.app.csv"
+                    "$cfg | $prof -q -o $out -- $2 > $3.app.csv"
                 ;;
             (*)
-                echo ">> $prof -q -c $configs/$1.xml -o $3.json -- $2 > $3.app.csv"
+                echo ">> $prof -q -c $cfg -o $out -- $2 > $3.app.csv"
                 ;;
         esac
     }
