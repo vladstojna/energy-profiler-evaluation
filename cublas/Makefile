@@ -1,5 +1,13 @@
-target  ?= cublas.out
-src     := cublas_xt.cpp
+USE_CUBLASXT ?=
+
+ifeq ($(USE_CUBLASXT),)
+prefix := cublas
+else
+prefix := cublas_xt
+endif
+
+target  ?= $(prefix).out
+src     := $(prefix).cpp
 obj     := $(patsubst %.cpp, %.o, $(src))
 deps    := $(patsubst %.cpp, %.d, $(src))
 
@@ -18,6 +26,10 @@ cflags  += $(addprefix -D, $(cpp))
 
 ldflags += $(addprefix -L, $(libs))
 ldflags += -l:libtimeprinter.a -lpthread -lcublas
+
+ifeq ($(USE_CUBLASXT),)
+ldflags += -lcudart
+endif
 
 debug ?=
 ifdef debug
@@ -44,3 +56,6 @@ remake: clean default
 
 clean:
 	rm -rf $(target) $(deps) $(obj)
+
+purge:
+	rm -rf *.out *.o *.d
