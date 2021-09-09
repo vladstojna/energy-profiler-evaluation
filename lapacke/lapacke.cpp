@@ -90,6 +90,26 @@ namespace
             res = func_inv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
+
+        template<typename Real, typename Func>
+        void getrf_impl(
+            Func func,
+            std::size_t M,
+            std::size_t N,
+            std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::printer tpr;
+            std::vector<Real> a(M * N);
+            std::vector<lapack_int> ipiv(std::min(M, N));
+            std::generate(a.begin(), a.end(), gen);
+
+            tpr.sample();
+            int res = func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+            handle_error(res);
+        }
     }
 
     using work_func = void(*)(
@@ -152,6 +172,24 @@ namespace
         detail::getri_impl<float>(LAPACKE_sgetrf, LAPACKE_sgetri, N, engine);
     }
 
+    __attribute__((noinline)) void dgetrf(
+        std::size_t M,
+        std::size_t N,
+        std::size_t,
+        std::mt19937_64& engine)
+    {
+        detail::getrf_impl<double>(LAPACKE_dgetrf, M, N, engine);
+    }
+
+    __attribute__((noinline)) void sgetrf(
+        std::size_t M,
+        std::size_t N,
+        std::size_t,
+        std::mt19937_64& engine)
+    {
+        detail::getrf_impl<float>(LAPACKE_sgetrf, M, N, engine);
+    }
+
     class cmdparams
     {
         std::size_t m = 0;
@@ -205,6 +243,16 @@ namespace
                 }
                 util::to_scalar(argv[2], n);
             }
+            else if (func == dgetrf || func == sgetrf)
+            {
+                if (argc < 4)
+                {
+                    print_usage(argv[0]);
+                    throw std::invalid_argument(op_type.append(": Too few arguments"));
+                }
+                util::to_scalar(argv[2], m);
+                util::to_scalar(argv[3], n);
+            }
             else
             {
                 print_usage(argv[0]);
@@ -233,6 +281,10 @@ namespace
                 return dgetri;
             if (str == "sgetri")
                 return sgetri;
+            if (str == "dgetrf")
+                return dgetrf;
+            if (str == "sgetrf")
+                return sgetrf;
             return nullptr;
         }
 
@@ -241,7 +293,8 @@ namespace
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dgesv,sgesv} <n> <nrhs>\n"
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
-                << "\t" << prog << " {dgetri,sgetri} <n>\n";
+                << "\t" << prog << " {dgetri,sgetri} <n>\n"
+                << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
 }
