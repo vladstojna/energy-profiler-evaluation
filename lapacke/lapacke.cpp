@@ -66,6 +66,30 @@ namespace
             int res = func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
             handle_error(res);
         }
+
+        template<typename Real, typename FuncFact, typename FuncInv>
+        void getri_impl(
+            FuncFact func_fact,
+            FuncInv func_inv,
+            std::size_t N,
+            std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::printer tpr;
+            std::vector<Real> a(N * N);
+            std::vector<lapack_int> ipiv(N);
+            std::generate(a.begin(), a.end(), gen);
+
+            tpr.sample();
+            int res = func_fact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
+            handle_error(res);
+
+            tpr.sample();
+            res = func_inv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
+            handle_error(res);
+        }
     }
 
     using work_func = void(*)(
@@ -108,6 +132,24 @@ namespace
         std::mt19937_64& engine)
     {
         detail::gels_impl<float>(LAPACKE_sgels, M, N, Nrhs, engine);
+    }
+
+    __attribute__((noinline)) void dgetri(
+        std::size_t,
+        std::size_t N,
+        std::size_t,
+        std::mt19937_64& engine)
+    {
+        detail::getri_impl<double>(LAPACKE_dgetrf, LAPACKE_dgetri, N, engine);
+    }
+
+    __attribute__((noinline)) void sgetri(
+        std::size_t,
+        std::size_t N,
+        std::size_t,
+        std::mt19937_64& engine)
+    {
+        detail::getri_impl<float>(LAPACKE_sgetrf, LAPACKE_sgetri, N, engine);
     }
 
     class cmdparams
@@ -154,6 +196,15 @@ namespace
                 util::to_scalar(argv[2], n);
                 util::to_scalar(argv[3], nrhs);
             }
+            else if (func == dgetri || func == sgetri)
+            {
+                if (argc < 3)
+                {
+                    print_usage(argv[0]);
+                    throw std::invalid_argument(op_type.append(": Too few arguments"));
+                }
+                util::to_scalar(argv[2], n);
+            }
             else
             {
                 print_usage(argv[0]);
@@ -178,6 +229,10 @@ namespace
                 return sgels;
             if (str == "sgesv")
                 return sgesv;
+            if (str == "dgetri")
+                return dgetri;
+            if (str == "sgetri")
+                return sgetri;
             return nullptr;
         }
 
@@ -185,7 +240,8 @@ namespace
         {
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dgesv,sgesv} <n> <nrhs>\n"
-                << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n";
+                << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
+                << "\t" << prog << " {dgetri,sgetri} <n>\n";
         }
     };
 }
