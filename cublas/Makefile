@@ -1,5 +1,5 @@
 target  ?= cublas.out
-src     := $(wildcard *.cpp)
+src     := cublas_xt.cpp
 obj     := $(patsubst %.cpp, %.o, $(src))
 deps    := $(patsubst %.cpp, %.d, $(src))
 
