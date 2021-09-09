@@ -50,6 +50,8 @@ namespace
     {
         void handle_error(cublasStatus_t status)
         {
+            if (status == CUBLAS_STATUS_SUCCESS)
+                return;
             switch (status)
             {
             case CUBLAS_STATUS_NOT_INITIALIZED:
@@ -59,7 +61,7 @@ namespace
             case CUBLAS_STATUS_EXECUTION_FAILED:
                 throw std::runtime_error("The function failed to launch on the GPU");
             default:
-                return;
+                throw std::runtime_error("Some other error occurred");
             }
         }
 
@@ -125,11 +127,18 @@ namespace
             throw std::runtime_error("cublasXtDeviceSelect error");
     }
 
+    void set_block_dim(cublasXtHandle_t handle, int block_dim)
+    {
+        if (auto res = cublasXtSetBlockDim(handle, block_dim); res != CUBLAS_STATUS_SUCCESS)
+            throw std::runtime_error("cublasXtSetBlockDim error");
+    }
+
     struct cmdargs
     {
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
+        int block_dim = 0;
         work_func func = nullptr;
 
         cmdargs(int argc, const char* const* argv)
@@ -157,6 +166,16 @@ namespace
                 throw std::invalid_argument(std::string("invalid work type: ").append(argv[1]));
             }
             assert(func);
+
+            if (argc >= 6)
+            {
+                util::to_scalar(argv[5], block_dim);
+                if (block_dim <= 0)
+                    throw std::invalid_argument(
+                        std::string("block dimension must be positive, found: ")
+                        .append(std::to_string(block_dim))
+                    );
+            }
         }
 
         void do_work(cublasXtHandle_t handle, std::mt19937_64& engine) const
@@ -167,7 +186,7 @@ namespace
     private:
         void print_usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k>\n";
+            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <block_dim>\n";
         }
     };
 }
@@ -176,12 +195,14 @@ int main(int argc, char** argv)
 {
     try
     {
+        cmdargs args(argc, argv);
         std::random_device rnd_dev;
         std::mt19937_64 engine{ rnd_dev() };
-        cublas_xt_handle handle;
 
+        cublas_xt_handle handle;
         set_first_device(handle);
-        cmdargs args(argc, argv);
+        if (args.block_dim)
+            set_block_dim(handle, args.block_dim);
         args.do_work(handle, engine);
     }
     catch (const std::exception& e)
