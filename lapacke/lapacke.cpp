@@ -15,6 +15,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     namespace detail
     {
         void handle_error(int res)
@@ -31,7 +33,7 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             std::vector<Real> a(N * N);
             std::vector<Real> b(N * Nrhs);
             std::vector<lapack_int> ipiv(N);
@@ -39,7 +41,7 @@ namespace
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            tpr.sample();
+            smp.do_sample();
             int res = func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
             handle_error(res);
         }
@@ -55,14 +57,14 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             std::vector<Real> a(M * N);
             std::vector<Real> b(std::max(N, M) * Nrhs);
 
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            tpr.sample();
+            smp.do_sample();
             int res = func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
             handle_error(res);
         }
@@ -77,16 +79,16 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             std::vector<Real> a(N * N);
             std::vector<lapack_int> ipiv(N);
             std::generate(a.begin(), a.end(), gen);
 
-            tpr.sample();
+            smp.do_sample();
             int res = func_fact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
             handle_error(res);
 
-            tpr.sample();
+            smp.do_sample();
             res = func_inv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
@@ -101,12 +103,12 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             std::vector<Real> a(M * N);
             std::vector<lapack_int> ipiv(std::min(M, N));
             std::generate(a.begin(), a.end(), gen);
 
-            tpr.sample();
+            smp.do_sample();
             int res = func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
             handle_error(res);
         }

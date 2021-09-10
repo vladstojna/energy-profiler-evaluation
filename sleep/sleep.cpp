@@ -6,6 +6,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     __attribute__((noinline)) void sleep(const std::chrono::milliseconds& dur)
     {
         std::this_thread::sleep_for(dur);
@@ -27,7 +29,7 @@ int main(int argc, char** argv)
             throw std::invalid_argument("Not enough arguments");
         }
         auto ms = util::to_scalar<std::chrono::milliseconds::rep>(argv[1]);
-        tp::printer tpr;
+        tp::sampler s(g_tpr);
         sleep(std::chrono::milliseconds(ms));
     }
     catch (const std::exception& e)

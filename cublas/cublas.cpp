@@ -13,6 +13,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     class cublas_handle
     {
         cublasHandle_t _handle;
@@ -127,7 +129,7 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             Real alpha = 1;
             Real beta = 0;
             std::vector<Real> a(M * K);
@@ -136,7 +138,7 @@ namespace
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            tpr.sample();
+            smp.do_sample();
             device_buffer<Real> dev_a(a.size());
             device_buffer<Real> dev_b(b.size());
             device_buffer<Real> dev_c(c.size());
@@ -159,7 +161,7 @@ namespace
             if (res != CUBLAS_STATUS_SUCCESS)
                 throw std::runtime_error("Error setting matrix C");
 
-            tpr.sample();
+            smp.do_sample();
             res = func(
                 handle,
                 CUBLAS_OP_N,
@@ -172,7 +174,7 @@ namespace
             handle_error(res);
             cudaDeviceSynchronize();
 
-            tpr.sample();
+            smp.do_sample();
             res = cublasGetMatrix(
                 M, K, sizeof(typename decltype(dev_a)::value_type),
                 dev_a.get(), M,
