@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <params>
+        <domain_mask>0xb</domain_mask>
+    </params>
+
+    <sections>
+
+        <section target="cpu,gpu" label="dgemm">
+            <bounds>
+                <func name="(anonymous namespace)::dgemm"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu,gpu" label="sgemm">
+            <bounds>
+                <func name="(anonymous namespace)::sgemm"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+    </sections>
+
+</config>
