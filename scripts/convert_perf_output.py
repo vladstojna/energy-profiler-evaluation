@@ -81,7 +81,6 @@ def main():
     )
     args = add_arguments(parser).parse_args()
     with read_from(args.source_file) as f:
-
         csvrdr = csv.reader(not_empty_not_comment(f))
         first_row = next(iter(csvrdr), None)
         if first_row:
