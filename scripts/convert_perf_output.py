@@ -92,6 +92,7 @@ def main():
                 c[0] += 1
                 return c[0]
 
+            units_meta = ["#units", "energy=J", "power=W", "time=ns"]
             noop = lambda x: x
             fieldnames = {
                 "count": ([0], inc_count),
@@ -100,12 +101,13 @@ def main():
                 "counter_run_time": (4, noop),
                 "counter_run_percent": (5, noop),
             }
-            units_meta = ["#units", "energy=J", "power=W", "time=ns"]
+            first_data_row = (0, 0 + args.start, 0.0, 0, 0.0)
+            assert len(first_data_row) == len(fieldnames)
             with output_to(args.output) as of:
                 writer = csv.writer(of)
                 writer.writerow(units_meta)
                 writer.writerow(fieldnames)
-                writer.writerow((0, 0 + args.start, 0.0, 0, 0.0))
+                writer.writerow(first_data_row)
                 writer.writerow(convert_filter_row(first_row, fieldnames))
                 for row in csvrdr:
                     writer.writerow(convert_filter_row(row, fieldnames))
