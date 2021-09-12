@@ -74,7 +74,10 @@ def main():
             return float(s)
 
     def convert_filter_row(row: List, fieldnames: Dict[str, Tuple[int, Callable]]):
-        return (call(row[ix]) if row[ix] else 0 for _, (ix, call) in fieldnames.items())
+        return (
+            call(ix) if not isinstance(ix, int) else call(row[ix]) if row[ix] else 0
+            for _, (ix, call) in fieldnames.items()
+        )
 
     parser = argparse.ArgumentParser(
         description="Convert perf stat output to a more plottable format"
@@ -84,8 +87,14 @@ def main():
         csvrdr = csv.reader(not_empty_not_comment(f))
         first_row = next(iter(csvrdr), None)
         if first_row:
+
+            def inc_count(c: List[int]) -> int:
+                c[0] += 1
+                return c[0]
+
             noop = lambda x: x
             fieldnames = {
+                "count": ([0], inc_count),
                 "time": (0, lambda t: int(int_or_float(t) * 1e9) + args.start),
                 first_row[3]: (1, noop),
                 "counter_run_time": (4, noop),
@@ -96,7 +105,7 @@ def main():
                 writer = csv.writer(of)
                 writer.writerow(units_meta)
                 writer.writerow(fieldnames)
-                writer.writerow((0 + args.start, 0.0, 0, 0.0))
+                writer.writerow((0, 0 + args.start, 0.0, 0, 0.0))
                 writer.writerow(convert_filter_row(first_row, fieldnames))
                 for row in csvrdr:
                     writer.writerow(convert_filter_row(row, fieldnames))
