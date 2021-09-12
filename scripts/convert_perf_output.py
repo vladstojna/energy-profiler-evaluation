@@ -3,7 +3,12 @@
 import sys
 import csv
 import argparse
+import itertools
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+
+def log(*args: Any) -> None:
+    print("{}:".format(sys.argv[0]), *args, file=sys.stderr)
 
 
 def read_from(path: Optional[str]) -> Any:
@@ -52,7 +57,16 @@ def add_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         "-s",
         "--start",
         action="store",
-        help="absolute time of start (default: 0)",
+        help="absolute start time (default: 0)",
+        required=False,
+        type=positive_int_or_float,
+        default=0,
+    )
+    parser.add_argument(
+        "-e",
+        "--end",
+        action="store",
+        help="absolute end time (default: 0)",
         required=False,
         type=positive_int_or_float,
         default=0,
@@ -76,13 +90,22 @@ def main():
     def convert_filter_row(row: List, fieldnames: Dict[str, Tuple[int, Callable]]):
         return (
             call(ix) if not isinstance(ix, int) else call(row[ix]) if row[ix] else 0
-            for _, (ix, call) in fieldnames.items()
+            for _, (_, ix, call) in fieldnames.items()
+        )
+
+    def shift_row_time(row: List, shift_by: int, time_ix: int):
+        return (
+            row[ix] if ix != time_ix else row[ix] - shift_by for ix in range(len(row))
         )
 
     parser = argparse.ArgumentParser(
         description="Convert perf stat output to a more plottable format"
     )
     args = add_arguments(parser).parse_args()
+    if args.start and args.end and args.end <= args.start:
+        raise parser.error("-e/--end must be greater than -s/--start")
+    if args.end and not args.start:
+        raise parser.error("-e/--end requires -s/--start")
     with read_from(args.source_file) as f:
         csvrdr = csv.reader(not_empty_not_comment(f))
         first_row = next(iter(csvrdr), None)
@@ -95,22 +118,42 @@ def main():
             units_meta = ["#units", "energy=J", "power=W", "time=ns"]
             noop = lambda x: x
             fieldnames = {
-                "count": ([0], inc_count),
-                "time": (0, lambda t: int(int_or_float(t) * 1e9) + args.start),
-                first_row[3]: (1, noop),
-                "counter_run_time": (4, noop),
-                "counter_run_percent": (5, noop),
+                "count": (0, [0], inc_count),
+                "time": (1, 0, lambda t: int(int_or_float(t) * 1e9) + args.start),
+                first_row[3]: (2, 1, noop),
+                "counter_run_time": (3, 4, noop),
+                "counter_run_percent": (4, 5, noop),
             }
-            first_data_row = (0, 0 + args.start, 0.0, 0, 0.0)
+            first_data_row = [0, 0 + args.start, "0.0", "0", "0.0"]
             assert len(first_data_row) == len(fieldnames)
             with output_to(args.output) as of:
                 writer = csv.writer(of)
                 writer.writerow(units_meta)
                 writer.writerow(fieldnames)
-                writer.writerow(first_data_row)
-                writer.writerow(convert_filter_row(first_row, fieldnames))
-                for row in csvrdr:
-                    writer.writerow(convert_filter_row(row, fieldnames))
+
+                if not args.end:
+                    writer.writerow(first_data_row)
+                    writer.writerow(convert_filter_row(first_row, fieldnames))
+                    for row in csvrdr:
+                        writer.writerow(convert_filter_row(row, fieldnames))
+                else:
+                    data = [first_data_row]
+                    data += [
+                        [c for c in convert_filter_row(r, fieldnames)]
+                        for r in itertools.chain((first_row,), csvrdr)
+                    ]
+                    time_ix = fieldnames["time"][0]
+                    last_time = data[-1][time_ix]
+                    if last_time > args.end:
+                        shift_by = last_time - args.end
+                        log("perf overhead ~", shift_by, "ns")
+                        log("shifting time values left by", shift_by, "ns")
+                        for row in data:
+                            writer.writerow(shift_row_time(row, shift_by, time_ix))
+                    else:
+                        log("provided end time >= {}".format(last_time))
+                        for row in data:
+                            writer.writerow(row)
 
 
 if __name__ == "__main__":
