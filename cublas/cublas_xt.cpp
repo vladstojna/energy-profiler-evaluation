@@ -10,6 +10,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     class cublas_xt_handle
     {
         cublasXtHandle_t _handle;
@@ -77,7 +79,7 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             std::vector<Real> a(M * K);
             std::vector<Real> b(K * N);
             std::vector<Real> c(M * N);
@@ -87,7 +89,7 @@ namespace
             Real alpha = 1;
             Real beta = 0;
 
-            tpr.sample();
+            smp.do_sample();
             cublasStatus_t res = func(
                 handle,
                 CUBLAS_OP_N,

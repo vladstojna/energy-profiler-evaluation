@@ -35,4 +35,27 @@ namespace tp
     private:
         std::unique_ptr<impl> _impl;
     };
+
+    class sampler
+    {
+    public:
+        sampler(printer& p) :
+            _p(p)
+        {
+            _p.sample();
+        }
+
+        ~sampler()
+        {
+            _p.sample();
+        }
+
+        void do_sample()
+        {
+            _p.sample();
+        }
+
+    private:
+        printer& _p;
+    };
 }

@@ -12,6 +12,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     struct cmdargs
     {
         std::size_t count = 0;
@@ -82,7 +84,7 @@ int main(int argc, char** argv)
     {
         const cmdargs args(argc, argv);
         std::vector<std::mt19937_64> engines = get_engines();
-        tp::printer tpr;
+        tp::sampler s(g_tpr);
         generate(engines, args.count, args.lower, args.upper);
     }
     catch (const std::exception& e)

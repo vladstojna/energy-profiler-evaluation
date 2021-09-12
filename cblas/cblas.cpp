@@ -15,6 +15,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     using work_func = void(*)(
         std::size_t,
         std::size_t,
@@ -29,14 +31,14 @@ namespace
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            tp::printer tpr;
+            tp::sampler smp(g_tpr);
             std::vector<Real> a(M * K);
             std::vector<Real> b(K * N);
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            tpr.sample();
+            smp.do_sample();
             func(CblasRowMajor, CblasNoTrans, Trans,
                 M, N, K, 1.0,
                 a.data(), K,
@@ -82,13 +84,13 @@ namespace
         std::uniform_real_distribution<double> dist{ 0.0, 1.0 };
         auto gen = [&]() { return dist(engine); };
 
-        tp::printer tpr;
+        tp::sampler smp(g_tpr);
         std::vector<double> a(M * N);
         std::vector<double> x(N);
         std::vector<double> y(M);
         std::generate(a.begin(), a.end(), gen);
 
-        tpr.sample();
+        smp.do_sample();
         cblas_dgemv(CblasRowMajor, CblasNoTrans,
             M, N, 1.0,
             a.data(), N,
@@ -145,7 +147,7 @@ namespace
             assert(func);
         }
 
-        void do_work(std::mt19937_64& engine)
+        void do_work(std::mt19937_64& engine) const
         {
             func(m, n, k, engine);
         }
@@ -161,11 +163,11 @@ namespace
 
 int main(int argc, char** argv)
 {
-    std::random_device rnd_dev;
-    std::mt19937_64 engine{ rnd_dev() };
     try
     {
-        cmdparams params(argc, argv);
+        const cmdparams params(argc, argv);
+        std::random_device rnd_dev;
+        std::mt19937_64 engine{ rnd_dev() };
         params.do_work(engine);
     }
     catch (const std::exception& e)

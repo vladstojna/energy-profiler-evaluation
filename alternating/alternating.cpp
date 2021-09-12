@@ -10,6 +10,8 @@
 
 namespace
 {
+    tp::printer g_tpr;
+
     class timer
     {
     public:
@@ -133,6 +135,7 @@ namespace
         for (auto i = 0; i < count; i++)
         {
             std::this_thread::sleep_for(period);
+            tp::sampler s(g_tpr);
             generate(engines, rng_count, 0.0, 1.0);
         }
     }
@@ -145,7 +148,7 @@ int main(int argc, char** argv)
         const cmdargs args(argc, argv);
         auto engines = get_engines();
         auto rng_count = find_rng_count(engines, args.period, 0.05);
-        tp::printer tpr;
+        g_tpr.sample();
         do_work(engines, args.period, args.count, rng_count);
     }
     catch (const std::exception& e)
