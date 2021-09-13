@@ -3,7 +3,7 @@
 import argparse
 import csv
 import sys
-from typing import Any, Iterable, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
 
 def read_from(path: Optional[str]) -> Any:
@@ -22,6 +22,14 @@ def int_or_float(s: str) -> Union[int, float]:
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    def _int_or_float(s: str) -> Union[int, float]:
+        try:
+            return int_or_float(s)
+        except ValueError as err:
+            raise argparse.ArgumentTypeError(
+                err.args[0] if err.args else "could not convert value to float"
+            )
+
     parser.add_argument(
         "source_file",
         action="store",
@@ -43,10 +51,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         "-a",
         "--amount",
         action="store",
-        help="subtract AMOUNT from all time values (default: 0)",
-        required=True,
-        type=int_or_float,
-        default=0,
+        help="subtract AMOUNT from all time values (default: first value)",
+        required=False,
+        type=_int_or_float,
+        default=None,
         metavar="AMOUNT",
     )
     return parser
@@ -71,6 +79,11 @@ def read_input_file(f: Iterable) -> Tuple[csv.reader, csv.DictReader]:
 
 
 def main():
+    def filter_row(row: Dict, amount: Union[int, float]):
+        return (
+            (k, v if k != "time" else int_or_float(v) - amount) for k, v in row.items()
+        )
+
     parser = argparse.ArgumentParser(
         description="Transform time values from absolute to relative"
     )
@@ -81,13 +94,13 @@ def main():
             csv.writer(of).writerows(meta)
             writer = csv.DictWriter(of, data.fieldnames)
             writer.writeheader()
-            for row in data:
-                writer.writerow(
-                    {
-                        k: v if k != "time" else int_or_float(v) - args.amount
-                        for k, v in row.items()
-                    }
-                )
+            first_row = next(iter(data), None)
+            if first_row is not None:
+                if args.amount is None and "time" in first_row:
+                    args.amount = int_or_float(first_row["time"])
+                writer.writerow(dict(filter_row(first_row, args.amount)))
+                for row in data:
+                    writer.writerow(dict(filter_row(row, args.amount)))
 
 
 if __name__ == "__main__":
