@@ -102,6 +102,26 @@ for i in $(seq 0 $(($iters - 1))); do
         echo "$0: i=$i $cmd; threads=$OPENBLAS_NUM_THREADS"
         execute_command "$sample_name" "$cmd" "$out"
 
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out dgetrf 20000 20000"
+        out="$outdir/$pref-dgetrf_20K_20K-$suff"
+        echo "$0: i=$i $cmd; threads=$OPENBLAS_NUM_THREADS"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out sgetrf 25000 25000"
+        out="$outdir/$pref-sgetrf_25K_25K-$suff"
+        echo "$0: i=$i $cmd; threads=$OPENBLAS_NUM_THREADS"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out dgetri 12000"
+        out="$outdir/$pref-dgetri_12K-$suff"
+        echo "$0: i=$i $cmd; threads=$OPENBLAS_NUM_THREADS"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out sgetri 16000"
+        out="$outdir/$pref-sgetri_16K-$suff"
+        echo "$0: i=$i $cmd; threads=$OPENBLAS_NUM_THREADS"
+        execute_command "$sample_name" "$cmd" "$out"
+
         unset OPENBLAS_NUM_THREADS
     fi
 
@@ -149,6 +169,26 @@ for i in $(seq 0 $(($iters - 1))); do
 
         cmd="$samples_dir/$sample_name/$sample_name-intel-mkl.out sgels 24000 20000 100"
         out="$outdir/$pref-sgels_24K_20K_100-$suff"
+        echo "$0: i=$i $cmd"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out dgetrf 20000 20000"
+        out="$outdir/$pref-dgetrf_20K_20K-$suff"
+        echo "$0: i=$i $cmd"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out sgetrf 25000 25000"
+        out="$outdir/$pref-sgetrf_25K_25K-$suff"
+        echo "$0: i=$i $cmd"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out dgetri 15000"
+        out="$outdir/$pref-dgetri_15K-$suff"
+        echo "$0: i=$i $cmd"
+        execute_command "$sample_name" "$cmd" "$out"
+
+        cmd="$samples_dir/$sample_name/$sample_name-$pref.out sgetri 18000"
+        out="$outdir/$pref-sgetri_18K-$suff"
         echo "$0: i=$i $cmd"
         execute_command "$sample_name" "$cmd" "$out"
     fi
