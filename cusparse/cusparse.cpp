@@ -181,18 +181,26 @@ namespace
 
     namespace detail
     {
+        template<typename T, typename = void>
+        struct has_enum_value : std::false_type
+        {};
+
+        template<typename T>
+        struct has_enum_value<T, std::void_t<decltype(T::enum_value)>> : std::true_type
+        {};
+
         template<typename Real>
-        struct data_type : std::false_type
+        struct data_type
         {};
 
         template<>
-        struct data_type<float> : std::true_type
+        struct data_type<float>
         {
             constexpr static const auto enum_value = CUDA_R_32F;
         };
 
         template<>
-        struct data_type<double> : std::true_type
+        struct data_type<double>
         {
             constexpr static const auto enum_value = CUDA_R_64F;
         };
@@ -250,7 +258,7 @@ namespace
         }
 
 
-        template<typename Real, std::enable_if_t<data_type<Real>::value, bool> = true>
+        template<typename Real>
         void spgemm_impl(
             std::int32_t M,
             std::int32_t N,
@@ -260,6 +268,7 @@ namespace
             cusparseHandle_t handle,
             std::mt19937_64& engine)
         {
+            static_assert(has_enum_value<data_type<Real>>::value, "Unsupported Real type");
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
