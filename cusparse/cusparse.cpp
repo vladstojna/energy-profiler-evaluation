@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cassert>
 #include <random>
-#include <set>
 
 namespace
 {
