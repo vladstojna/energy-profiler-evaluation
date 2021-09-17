@@ -180,56 +180,235 @@ namespace
         decltype(cusparse_csr_destroy)
     >;
 
-    std::vector<std::int32_t> get_indices(
-        std::int32_t N, std::size_t NNZ, std::mt19937_64& engine)
+    namespace detail
     {
-        std::uniform_int_distribution<std::int32_t> dist{ 0, N };
-        std::vector<std::int32_t> indices(NNZ);
-        std::generate(indices.begin(), indices.end(), [&]() { return dist(engine); });
-        return indices;
-    }
+        template<typename Real>
+        struct data_type : std::false_type
+        {};
 
-    template<typename T>
-    void copy_impl(
-        T* dest, const T* src, std::size_t count, cudaMemcpyKind kind, std::string_view msg)
-    {
-        auto res = cudaMemcpy(dest, src, count * sizeof(T), kind);
-        if (res != cudaSuccess)
-            throw std::runtime_error(get_cuda_error(msg, res));
-    }
+        template<>
+        struct data_type<float> : std::true_type
+        {
+            constexpr static const auto enum_value = CUDA_R_32F;
+        };
 
-    template<typename T>
-    void copy_to_device(T* dest, const T* src, std::size_t count)
-    {
-        copy_impl(dest, src, count, cudaMemcpyHostToDevice, "Error copying host -> device");
-    }
+        template<>
+        struct data_type<double> : std::true_type
+        {
+            constexpr static const auto enum_value = CUDA_R_64F;
+        };
 
-    template<typename T>
-    void copy_from_device(T* dest, const T* src, std::size_t count)
-    {
-        copy_impl(dest, src, count, cudaMemcpyDeviceToHost, "Error copying device -> host");
-    }
+        std::vector<std::int32_t> get_indices(
+            std::int32_t N, std::size_t NNZ, std::mt19937_64& engine)
+        {
+            std::uniform_int_distribution<std::int32_t> dist{ 0, N };
+            std::vector<std::int32_t> indices(NNZ);
+            std::generate(indices.begin(), indices.end(), [&]() { return dist(engine); });
+            return indices;
+        }
 
-    void coo2csr(
-        device_buffer<std::int32_t>& dest,
-        std::int32_t rows,
-        std::size_t nnz,
-        cusparseHandle_t handle,
-        std::mt19937_64& engine)
-    {
-        auto row_idxs = get_indices(rows, nnz, engine);
-        std::sort(row_idxs.begin(), row_idxs.end());
-        device_buffer<std::int32_t> drows(row_idxs.size());
-        copy_to_device(drows.get(), row_idxs.data(), row_idxs.size());
-        auto status = cusparseXcoo2csr(handle,
-            drows,
-            nnz,
-            rows,
-            dest,
-            CUSPARSE_INDEX_BASE_ZERO);
-        cudaDeviceSynchronize();
-        if (status != CUSPARSE_STATUS_SUCCESS)
-            throw std::runtime_error(get_cusparse_error("Error converting COO to CSR", status));
+        template<typename T>
+        void copy_impl(
+            T* dest, const T* src, std::size_t count, cudaMemcpyKind kind, std::string_view msg)
+        {
+            auto res = cudaMemcpy(dest, src, count * sizeof(T), kind);
+            if (res != cudaSuccess)
+                throw std::runtime_error(get_cuda_error(msg, res));
+        }
+
+        template<typename T>
+        void copy_to_device(T* dest, const T* src, std::size_t count)
+        {
+            copy_impl(dest, src, count, cudaMemcpyHostToDevice, "Error copying host -> device");
+        }
+
+        template<typename T>
+        void copy_from_device(T* dest, const T* src, std::size_t count)
+        {
+            copy_impl(dest, src, count, cudaMemcpyDeviceToHost, "Error copying device -> host");
+        }
+
+        void coo2csr(
+            device_buffer<std::int32_t>& dest,
+            std::int32_t rows,
+            std::size_t nnz,
+            cusparseHandle_t handle,
+            std::mt19937_64& engine)
+        {
+            auto row_idxs = get_indices(rows, nnz, engine);
+            std::sort(row_idxs.begin(), row_idxs.end());
+            device_buffer<std::int32_t> drows(row_idxs.size());
+            copy_to_device(drows.get(), row_idxs.data(), row_idxs.size());
+            auto status = cusparseXcoo2csr(handle,
+                drows,
+                nnz,
+                rows,
+                dest,
+                CUSPARSE_INDEX_BASE_ZERO);
+            cudaDeviceSynchronize();
+            if (status != CUSPARSE_STATUS_SUCCESS)
+                throw std::runtime_error(get_cusparse_error("Error converting COO to CSR", status));
+        }
+
+
+        template<typename Real, std::enable_if_t<data_type<Real>::value, bool> = true>
+        void spgemm_impl(
+            std::int32_t M,
+            std::int32_t N,
+            std::int32_t K,
+            std::size_t A_nnz,
+            std::size_t B_nnz,
+            cusparseHandle_t handle,
+            std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            const auto A_op_type = CUSPARSE_OPERATION_NON_TRANSPOSE;
+            const auto B_op_type = CUSPARSE_OPERATION_NON_TRANSPOSE;
+            const auto alg = CUSPARSE_SPGEMM_DEFAULT;
+            const auto dtype = data_type<Real>::enum_value;
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a_values(A_nnz);
+            std::vector<Real> b_values(B_nnz);
+            auto a_cols = get_indices(K, A_nnz, engine);
+            auto b_cols = get_indices(N, B_nnz, engine);
+            std::generate(a_values.begin(), a_values.end(), gen);
+            std::generate(b_values.begin(), b_values.end(), gen);
+
+            smp.do_sample();
+
+            device_buffer<Real> da_values(a_values.size());
+            device_buffer<std::int32_t> da_cols(a_cols.size());
+            device_buffer<std::int32_t> da_rows_csr(M + 1);
+            device_buffer<Real> db_values(b_values.size());
+            device_buffer<std::int32_t> db_cols(b_cols.size());
+            device_buffer<std::int32_t> db_rows_csr(K + 1);
+            device_buffer<std::int32_t> dc_rows_csr(M + 1);
+
+            coo2csr(da_rows_csr, M, A_nnz, handle, engine);
+            coo2csr(db_rows_csr, K, B_nnz, handle, engine);
+            copy_to_device(da_values.get(), a_values.data(), a_values.size());
+            copy_to_device(da_cols.get(), a_cols.data(), a_cols.size());
+            copy_to_device(db_values.get(), b_values.data(), b_values.size());
+            copy_to_device(db_cols.get(), b_cols.data(), b_cols.size());
+
+            smp.do_sample();
+
+            cusparse_spgemm_descr spgemm_desc(
+                cusparse_spgemm_descr_destroy,
+                cusparse_spgemm_descr_create);
+            cusparse_csr_mat_descr A(
+                cusparse_csr_destroy,
+                cusparse_csr_create,
+                M, K, A_nnz, da_rows_csr, da_cols, da_values, dtype);
+            cusparse_csr_mat_descr B(
+                cusparse_csr_destroy,
+                cusparse_csr_create,
+                K, N, B_nnz, db_rows_csr, db_cols, db_values, dtype);
+            cusparse_csr_mat_descr C(
+                cusparse_csr_destroy,
+                cusparse_csr_create,
+                M, N, 0, nullptr, nullptr, nullptr, dtype);
+
+            smp.do_sample();
+
+            Real alpha = 1.0;
+            Real beta = 0.0;
+            std::size_t buffer_size1;
+            auto status = cusparseSpGEMM_workEstimation(
+                handle,
+                A_op_type,
+                B_op_type,
+                &alpha, A, B, &beta, C,
+                dtype,
+                alg,
+                spgemm_desc,
+                &buffer_size1,
+                nullptr);
+            if (status != CUSPARSE_STATUS_SUCCESS)
+                throw std::runtime_error(
+                    get_cusparse_error("1st cusparseSpGEMM_workEstimation error", status));
+            device_buffer<std::uint8_t> dbuffer1(buffer_size1);
+            status = cusparseSpGEMM_workEstimation(
+                handle,
+                A_op_type,
+                B_op_type,
+                &alpha, A, B, &beta, C,
+                dtype,
+                alg,
+                spgemm_desc,
+                &buffer_size1,
+                dbuffer1);
+            if (status != CUSPARSE_STATUS_SUCCESS)
+                throw std::runtime_error(
+                    get_cusparse_error("2nd cusparseSpGEMM_workEstimation error", status));
+
+            cudaDeviceSynchronize();
+            smp.do_sample();
+
+            std::size_t buffer_size2;
+            status = cusparseSpGEMM_compute(
+                handle,
+                A_op_type,
+                B_op_type,
+                &alpha, A, B, &beta, C,
+                dtype,
+                alg,
+                spgemm_desc,
+                &buffer_size2,
+                nullptr);
+            if (status != CUSPARSE_STATUS_SUCCESS)
+                throw std::runtime_error(
+                    get_cusparse_error("1st cusparseSpGEMM_compute error", status));
+            device_buffer<std::uint8_t> dbuffer2(buffer_size2);
+            status = cusparseSpGEMM_compute(
+                handle,
+                A_op_type,
+                B_op_type,
+                &alpha, A, B, &beta, C,
+                dtype,
+                alg,
+                spgemm_desc,
+                &buffer_size2,
+                dbuffer2);
+            if (status != CUSPARSE_STATUS_SUCCESS)
+                throw std::runtime_error(
+                    get_cusparse_error("2nd cusparseSpGEMM_compute error", status));
+
+            cudaDeviceSynchronize();
+            smp.do_sample();
+
+            std::int64_t C_nnz;
+            {
+                std::int64_t C_num_rows, C_num_cols;
+                status = cusparseSpMatGetSize(C, &C_num_rows, &C_num_cols, &C_nnz);
+                if (status != CUSPARSE_STATUS_SUCCESS)
+                    throw std::runtime_error("Error getting matrix C size");
+            }
+            device_buffer<Real> dc_values(C_nnz);
+            device_buffer<std::int32_t> dc_cols(C_nnz);
+            status = cusparseCsrSetPointers(C, dc_rows_csr.get(), dc_cols.get(), dc_values.get());
+            if (status != CUSPARSE_STATUS_SUCCESS)
+                throw std::runtime_error("Error setting matrix C pointers");
+
+            status = cusparseSpGEMM_copy(
+                handle,
+                A_op_type,
+                B_op_type,
+                &alpha, A, B, &beta, C,
+                dtype,
+                alg,
+                spgemm_desc);
+
+            std::vector<Real> c_values(C_nnz);
+            std::vector<std::int32_t> c_rows_csr(M + 1);
+            std::vector<std::int32_t> c_cols(C_nnz);
+            copy_from_device(c_values.data(), dc_values.get(), c_values.size());
+            copy_from_device(c_rows_csr.data(), dc_rows_csr.get(), c_rows_csr.size());
+            copy_from_device(c_cols.data(), dc_cols.get(), c_cols.size());
+        }
     }
 
     __attribute__((noinline)) void spdgemm(
@@ -241,154 +420,19 @@ namespace
         cusparseHandle_t handle,
         std::mt19937_64& engine)
     {
-        using Real = double;
-        std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-        auto gen = [&]() { return dist(engine); };
+        detail::spgemm_impl<double>(M, N, K, A_nnz, B_nnz, handle, engine);
+    }
 
-        const auto A_op_type = CUSPARSE_OPERATION_NON_TRANSPOSE;
-        const auto B_op_type = CUSPARSE_OPERATION_NON_TRANSPOSE;
-        const auto alg = CUSPARSE_SPGEMM_DEFAULT;
-        const auto data_type = CUDA_R_64F;
-
-        tp::sampler smp(g_tpr);
-        std::vector<Real> a_values(A_nnz);
-        std::vector<Real> b_values(B_nnz);
-        auto a_cols = get_indices(K, A_nnz, engine);
-        auto b_cols = get_indices(N, B_nnz, engine);
-        std::generate(a_values.begin(), a_values.end(), gen);
-        std::generate(b_values.begin(), b_values.end(), gen);
-
-        smp.do_sample();
-
-        device_buffer<Real> da_values(a_values.size());
-        device_buffer<std::int32_t> da_cols(a_cols.size());
-        device_buffer<std::int32_t> da_rows_csr(M + 1);
-        device_buffer<Real> db_values(b_values.size());
-        device_buffer<std::int32_t> db_cols(b_cols.size());
-        device_buffer<std::int32_t> db_rows_csr(K + 1);
-        device_buffer<std::int32_t> dc_rows_csr(M + 1);
-
-        coo2csr(da_rows_csr, M, A_nnz, handle, engine);
-        coo2csr(db_rows_csr, K, B_nnz, handle, engine);
-        copy_to_device(da_values.get(), a_values.data(), a_values.size());
-        copy_to_device(da_cols.get(), a_cols.data(), a_cols.size());
-        copy_to_device(db_values.get(), b_values.data(), b_values.size());
-        copy_to_device(db_cols.get(), b_cols.data(), b_cols.size());
-
-        smp.do_sample();
-
-        cusparse_spgemm_descr spgemm_desc(
-            cusparse_spgemm_descr_destroy,
-            cusparse_spgemm_descr_create);
-        cusparse_csr_mat_descr A(
-            cusparse_csr_destroy,
-            cusparse_csr_create,
-            M, K, A_nnz, da_rows_csr, da_cols, da_values, data_type);
-        cusparse_csr_mat_descr B(
-            cusparse_csr_destroy,
-            cusparse_csr_create,
-            K, N, B_nnz, db_rows_csr, db_cols, db_values, data_type);
-        cusparse_csr_mat_descr C(
-            cusparse_csr_destroy,
-            cusparse_csr_create,
-            M, N, 0, nullptr, nullptr, nullptr, data_type);
-
-        smp.do_sample();
-
-        Real alpha = 1.0;
-        Real beta = 0.0;
-        std::size_t buffer_size1;
-        auto status = cusparseSpGEMM_workEstimation(
-            handle,
-            A_op_type,
-            B_op_type,
-            &alpha, A, B, &beta, C,
-            data_type,
-            alg,
-            spgemm_desc,
-            &buffer_size1,
-            nullptr);
-        if (status != CUSPARSE_STATUS_SUCCESS)
-            throw std::runtime_error(
-                get_cusparse_error("1st cusparseSpGEMM_workEstimation error", status));
-        device_buffer<std::uint8_t> dbuffer1(buffer_size1);
-        status = cusparseSpGEMM_workEstimation(
-            handle,
-            A_op_type,
-            B_op_type,
-            &alpha, A, B, &beta, C,
-            data_type,
-            alg,
-            spgemm_desc,
-            &buffer_size1,
-            dbuffer1);
-        if (status != CUSPARSE_STATUS_SUCCESS)
-            throw std::runtime_error(
-                get_cusparse_error("2nd cusparseSpGEMM_workEstimation error", status));
-
-        cudaDeviceSynchronize();
-        smp.do_sample();
-
-        std::size_t buffer_size2;
-        status = cusparseSpGEMM_compute(
-            handle,
-            A_op_type,
-            B_op_type,
-            &alpha, A, B, &beta, C,
-            data_type,
-            alg,
-            spgemm_desc,
-            &buffer_size2,
-            nullptr);
-        if (status != CUSPARSE_STATUS_SUCCESS)
-            throw std::runtime_error(
-                get_cusparse_error("1st cusparseSpGEMM_compute error", status));
-        device_buffer<std::uint8_t> dbuffer2(buffer_size2);
-        status = cusparseSpGEMM_compute(
-            handle,
-            A_op_type,
-            B_op_type,
-            &alpha, A, B, &beta, C,
-            data_type,
-            alg,
-            spgemm_desc,
-            &buffer_size2,
-            dbuffer2);
-        if (status != CUSPARSE_STATUS_SUCCESS)
-            throw std::runtime_error(
-                get_cusparse_error("2nd cusparseSpGEMM_compute error", status));
-
-        cudaDeviceSynchronize();
-        smp.do_sample();
-
-        std::int64_t C_nnz;
-        {
-            std::int64_t C_num_rows, C_num_cols;
-            status = cusparseSpMatGetSize(C, &C_num_rows, &C_num_cols, &C_nnz);
-            if (status != CUSPARSE_STATUS_SUCCESS)
-                throw std::runtime_error("Error getting matrix C size");
-        }
-        device_buffer<Real> dc_values(C_nnz);
-        device_buffer<std::int32_t> dc_cols(C_nnz);
-        status = cusparseCsrSetPointers(C, dc_rows_csr.get(), dc_cols.get(), dc_values.get());
-        if (status != CUSPARSE_STATUS_SUCCESS)
-            throw std::runtime_error("Error setting matrix C pointers");
-
-        status = cusparseSpGEMM_copy(
-            handle,
-            A_op_type,
-            B_op_type,
-            &alpha, A, B, &beta, C,
-            data_type,
-            alg,
-            spgemm_desc);
-
-        std::vector<Real> c_values(C_nnz);
-        std::vector<std::int32_t> c_rows_csr(M + 1);
-        std::vector<std::int32_t> c_cols(C_nnz);
-        copy_from_device(c_values.data(), dc_values.get(), c_values.size());
-        copy_from_device(c_rows_csr.data(), dc_rows_csr.get(), c_rows_csr.size());
-        copy_from_device(c_cols.data(), dc_cols.get(), c_cols.size());
+    __attribute__((noinline)) void spsgemm(
+        std::int32_t M,
+        std::int32_t N,
+        std::int32_t K,
+        std::size_t A_nnz,
+        std::size_t B_nnz,
+        cusparseHandle_t handle,
+        std::mt19937_64& engine)
+    {
+        detail::spgemm_impl<float>(M, N, K, A_nnz, B_nnz, handle, engine);
     }
 
     using work_func = void(*)(
@@ -435,7 +479,7 @@ namespace
             if (op_type == "dgemm")
                 func = spdgemm;
             else if (op_type == "sgemm")
-                func = nullptr;
+                func = spsgemm;
             else
             {
                 usage(argv[0]);
