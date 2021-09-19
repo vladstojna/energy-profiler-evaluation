@@ -28,6 +28,7 @@ namespace util
     T* device_alloc(std::size_t count)
     {
         T* ptr;
+        std::cout << "device alloc\n";
         auto status = cudaMalloc(reinterpret_cast<void**>(&ptr), count * sizeof(T));
         if (status != cudaSuccess)
             throw device_exception(get_cuda_error_str("cudaMalloc error", status));
@@ -37,6 +38,7 @@ namespace util
     template<typename T>
     void device_free(T* ptr)
     {
+        std::cout << "device free\n";
         auto status = cudaFree(ptr);
         if (status != cudaSuccess)
             std::cerr << "Error freeing device memory: " << cudaGetErrorString(status) << "\n";
@@ -121,11 +123,18 @@ namespace util
             inherited(size)
         {}
 
-        host_buffer(const device_buffer<element_type>& dev_buffer) :
-            host_buffer(dev_buffer.size())
+        host_buffer(device_buffer<element_type>&& other) = delete;
+        host_buffer(const device_buffer<element_type>& other) :
+            host_buffer(other.size())
         {
-            copy(*this, dev_buffer, size());
+            copy(*this, other, size());
         }
+
+        host_buffer& operator=(const device_buffer<element_type>& other)
+        {
+            copy(*this, other, size());
+            return *this;
+        };
 
         host_buffer(inherited&& other) :
             inherited(std::move(other))
@@ -134,12 +143,10 @@ namespace util
         host_buffer(const inherited& other) :
             inherited(other)
         {}
-
-        void swap(host_buffer& other)
-        {
-            inherited::swap(other);
-        }
     };
+
+    template<typename T>
+    host_buffer(const device_buffer<T>&)->host_buffer<T>;
 
     template<typename T>
     class device_buffer :
@@ -155,7 +162,7 @@ namespace util
         using inherited::operator bool;
 
         explicit device_buffer(size_type size) :
-            inherited(device_alloc<T>(size), size)
+            inherited(device_alloc<element_type>(size), size)
         {}
 
         device_buffer(device_buffer&& other) noexcept = default;
@@ -172,14 +179,24 @@ namespace util
             return *this = device_buffer(other);
         }
 
+        device_buffer(host_buffer<element_type>&& other) = delete;
         device_buffer(const host_buffer<element_type>& other) :
             device_buffer(other.size())
         {
             copy(*this, other, size());
         }
 
+        device_buffer& operator=(const host_buffer<element_type>& other)
+        {
+            copy(*this, other, size());
+            return *this;
+        };
+
         ~device_buffer() = default;
     };
+
+    template<typename T>
+    device_buffer(const host_buffer<T>&)->device_buffer<T>;
 
     template<typename T>
     void copy(host_buffer<T>& dest, const device_buffer<T>& src, std::size_t count)
