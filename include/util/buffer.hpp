@@ -40,6 +40,11 @@ namespace util
             std::copy(std::begin(other), std::end(other), std::begin(*this));
         }
 
+        buffer& operator=(const buffer& other)
+        {
+            return *this = buffer(other);
+        }
+
         ~buffer() = default;
 
         void swap(buffer& other)
