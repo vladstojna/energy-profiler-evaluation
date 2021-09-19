@@ -179,11 +179,6 @@ namespace util
         }
 
         ~device_buffer() = default;
-
-        void swap(device_buffer& other)
-        {
-            inherited::swap(other);
-        }
     };
 
     template<typename T>

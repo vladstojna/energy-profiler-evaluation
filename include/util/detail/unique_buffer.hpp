@@ -173,12 +173,6 @@ namespace util
             const_iterator cbegin() const noexcept { return begin(); }
             const_iterator cend() const noexcept { return end(); }
 
-            void swap(unique_buffer& other) noexcept
-            {
-                _data.swap(other._data);
-                _size = std::exchange(other._size, _size);
-            }
-
         private:
             holder _data;
             size_type _size;

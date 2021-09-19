@@ -46,10 +46,5 @@ namespace util
         }
 
         ~buffer() = default;
-
-        void swap(buffer& other)
-        {
-            inherited::swap(other);
-        }
     };
 }
