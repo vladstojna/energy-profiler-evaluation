@@ -15,20 +15,19 @@ namespace util
     public:
         using size_type = typename inherited::size_type;
         using element_type = typename inherited::element_type;
+        using iterator = typename inherited::iterator;
+        using const_iterator = typename inherited::const_iterator;
 
         using inherited::get;
         using inherited::size;
         using inherited::operator bool;
         using inherited::operator[];
-
-        using iterator = typename inherited::iterator;
-        using const_iterator = typename inherited::const_iterator;
         using inherited::begin;
         using inherited::end;
         using inherited::cbegin;
         using inherited::cend;
 
-        buffer(size_type size) :
+        explicit buffer(size_type size) :
             inherited(new T[size], size)
         {}
 
