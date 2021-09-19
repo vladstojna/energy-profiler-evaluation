@@ -13,13 +13,20 @@ namespace util
         using value_type = std::remove_pointer_t<handle_type>;
         using deleter_type = Deleter;
 
-        unique_handle(handle_type handle) noexcept :
+        unique_handle() noexcept = default;
+
+        explicit unique_handle(handle_type handle) noexcept :
             _handle(handle)
         {}
 
         operator handle_type() noexcept
         {
             return _handle.get();
+        }
+
+        explicit operator bool() const noexcept
+        {
+            return bool(_handle);
         }
 
     private:
