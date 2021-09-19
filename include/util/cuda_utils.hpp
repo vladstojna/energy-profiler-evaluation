@@ -13,9 +13,6 @@
 
 namespace util
 {
-    template<typename T>
-    using host_buffer = buffer<T>;
-
     class device_exception : public std::runtime_error
     {
     public:
@@ -91,6 +88,8 @@ namespace util
 
     template<typename T>
     class device_buffer;
+    template<typename T>
+    class host_buffer;
 
     template<typename T>
     void copy(host_buffer<T>& dest, const device_buffer<T>& src, std::size_t count);
@@ -98,6 +97,49 @@ namespace util
     void copy(device_buffer<T>& dest, const host_buffer<T>& src, std::size_t count);
     template<typename T>
     void copy(device_buffer<T>& dest, const device_buffer<T>& src, std::size_t count);
+
+    template<typename T>
+    class host_buffer : private buffer<T>
+    {
+        using inherited = buffer<T>;
+    public:
+        using size_type = typename inherited::size_type;
+        using element_type = typename inherited::element_type;
+        using iterator = typename inherited::iterator;
+        using const_iterator = typename inherited::const_iterator;
+
+        using inherited::get;
+        using inherited::size;
+        using inherited::operator bool;
+        using inherited::operator[];
+        using inherited::begin;
+        using inherited::end;
+        using inherited::cbegin;
+        using inherited::cend;
+
+        explicit host_buffer(size_type size) :
+            inherited(size)
+        {}
+
+        host_buffer(const device_buffer<element_type>& dev_buffer) :
+            host_buffer(dev_buffer.size())
+        {
+            copy(*this, dev_buffer, size());
+        }
+
+        host_buffer(inherited&& other) :
+            inherited(std::move(other))
+        {}
+
+        host_buffer(const inherited& other) :
+            inherited(other)
+        {}
+
+        void swap(host_buffer& other)
+        {
+            inherited::swap(other);
+        }
+    };
 
     template<typename T>
     class device_buffer :
@@ -112,7 +154,7 @@ namespace util
         using inherited::size;
         using inherited::operator bool;
 
-        device_buffer(size_type size) :
+        explicit device_buffer(size_type size) :
             inherited(device_alloc<T>(size), size)
         {}
 
@@ -123,6 +165,11 @@ namespace util
             device_buffer(other.size())
         {
             copy(*this, other, size());
+        }
+
+        device_buffer& operator=(const device_buffer& other)
+        {
+            return *this = device_buffer(other);
         }
 
         device_buffer(const host_buffer<element_type>& other) :
