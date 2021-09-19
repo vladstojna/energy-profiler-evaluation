@@ -28,7 +28,6 @@ namespace util
     T* device_alloc(std::size_t count)
     {
         T* ptr;
-        std::cout << "device alloc\n";
         auto status = cudaMalloc(reinterpret_cast<void**>(&ptr), count * sizeof(T));
         if (status != cudaSuccess)
             throw device_exception(get_cuda_error_str("cudaMalloc error", status));
@@ -38,7 +37,6 @@ namespace util
     template<typename T>
     void device_free(T* ptr)
     {
-        std::cout << "device free\n";
         auto status = cudaFree(ptr);
         if (status != cudaSuccess)
             std::cerr << "Error freeing device memory: " << cudaGetErrorString(status) << "\n";
@@ -201,21 +199,18 @@ namespace util
     template<typename T>
     void copy(host_buffer<T>& dest, const device_buffer<T>& src, std::size_t count)
     {
-        std::cout << "device->host copy\n";
         copy_impl(dest.get(), src.get(), count, detail::device_to_host{});
     }
 
     template<typename T>
     void copy(device_buffer<T>& dest, const host_buffer<T>& src, std::size_t count)
     {
-        std::cout << "host->device copy\n";
         copy_impl(dest.get(), src.get(), count, detail::host_to_device{});
     }
 
     template<typename T>
     void copy(device_buffer<T>& dest, const device_buffer<T>& src, std::size_t count)
     {
-        std::cout << "device->device copy\n";
         copy_impl(dest.get(), src.get(), count, detail::device_to_device{});
     }
 }
