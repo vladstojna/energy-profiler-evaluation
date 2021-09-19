@@ -51,15 +51,53 @@ namespace util
         struct as_lambda : std::integral_constant<decltype(func), func>
         {};
 
+        struct host_to_device {};
+        struct device_to_host {};
+        struct device_to_device {};
+
         template<typename T>
-        void device_copy_impl(
+        void copy_impl(
             T* dest, const T* src, std::size_t count, cudaMemcpyKind kind, std::string_view msg)
         {
             auto res = cudaMemcpy(dest, src, count * sizeof(T), kind);
             if (res != cudaSuccess)
                 throw device_exception(get_cuda_error_str(msg, res));
         }
+
+        template<typename T>
+        void copy_impl(T* dest, const T* src, std::size_t count, host_to_device)
+        {
+            detail::copy_impl(dest, src, count,
+                cudaMemcpyHostToDevice,
+                "cudaMemcpyHostToDevice error");
+        }
+
+        template<typename T>
+        void copy_impl(T* dest, const T* src, std::size_t count, device_to_host)
+        {
+            detail::copy_impl(dest, src, count,
+                cudaMemcpyDeviceToHost,
+                "cudaMemcpyDeviceToHost error");
+        }
+
+        template<typename T>
+        void copy_impl(T* dest, const T* src, std::size_t count, device_to_device)
+        {
+            detail::copy_impl(dest, src, count,
+                cudaMemcpyDeviceToDevice,
+                "cudaMemcpyDeviceToDevice error");
+        }
     }
+
+    template<typename T>
+    class device_buffer;
+
+    template<typename T>
+    void copy(host_buffer<T>& dest, const device_buffer<T>& src, std::size_t count);
+    template<typename T>
+    void copy(device_buffer<T>& dest, const host_buffer<T>& src, std::size_t count);
+    template<typename T>
+    void copy(device_buffer<T>& dest, const device_buffer<T>& src, std::size_t count);
 
     template<typename T>
     class device_buffer :
@@ -78,6 +116,23 @@ namespace util
             inherited(device_alloc<T>(size), size)
         {}
 
+        device_buffer(device_buffer&& other) noexcept = default;
+        device_buffer& operator=(device_buffer&& other) noexcept = default;
+
+        device_buffer(const device_buffer& other) :
+            device_buffer(other.size())
+        {
+            copy(*this, other, size());
+        }
+
+        device_buffer(const host_buffer<element_type>& other) :
+            device_buffer(other.size())
+        {
+            copy(*this, other, size());
+        }
+
+        ~device_buffer() = default;
+
         void swap(device_buffer& other)
         {
             inherited::swap(other);
@@ -85,28 +140,23 @@ namespace util
     };
 
     template<typename T>
-    void copy_to_device(T* dest, const T* src, std::size_t count)
-    {
-        detail::device_copy_impl(dest, src, count, cudaMemcpyHostToDevice,
-            "cudaMemcpyHostToDevice error");
-    }
-
-    template<typename T>
-    void copy_from_device(T* dest, const T* src, std::size_t count)
-    {
-        detail::device_copy_impl(dest, src, count, cudaMemcpyDeviceToHost,
-            "cudaMemcpyDeviceToHost error");
-    }
-
-    template<typename T>
     void copy(host_buffer<T>& dest, const device_buffer<T>& src, std::size_t count)
     {
-        copy_from_device(dest.get(), src.get(), count);
+        std::cout << "device->host copy\n";
+        copy_impl(dest.get(), src.get(), count, detail::device_to_host{});
     }
 
     template<typename T>
     void copy(device_buffer<T>& dest, const host_buffer<T>& src, std::size_t count)
     {
-        copy_to_device(dest.get(), src.get(), count);
+        std::cout << "host->device copy\n";
+        copy_impl(dest.get(), src.get(), count, detail::host_to_device{});
+    }
+
+    template<typename T>
+    void copy(device_buffer<T>& dest, const device_buffer<T>& src, std::size_t count)
+    {
+        std::cout << "device->device copy\n";
+        copy_impl(dest.get(), src.get(), count, detail::device_to_device{});
     }
 }
