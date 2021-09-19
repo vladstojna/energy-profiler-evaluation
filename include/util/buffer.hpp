@@ -2,6 +2,8 @@
 
 #include "detail/unique_buffer.hpp"
 
+#include <algorithm>
+
 namespace util
 {
     template<typename T>
@@ -19,9 +21,27 @@ namespace util
         using inherited::operator bool;
         using inherited::operator[];
 
+        using iterator = typename inherited::iterator;
+        using const_iterator = typename inherited::const_iterator;
+        using inherited::begin;
+        using inherited::end;
+        using inherited::cbegin;
+        using inherited::cend;
+
         buffer(size_type size) :
             inherited(new T[size], size)
         {}
+
+        buffer(buffer&& other) noexcept = default;
+        buffer& operator=(buffer&& other) noexcept = default;
+
+        buffer(const buffer& other) :
+            buffer(other.size())
+        {
+            std::copy(std::begin(other), std::end(other), std::begin(*this));
+        }
+
+        ~buffer() = default;
 
         void swap(buffer& other)
         {
