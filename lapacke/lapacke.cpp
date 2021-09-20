@@ -33,40 +33,20 @@ namespace
         template<auto Func>
         struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
-        template<typename T>
-        struct gesv_caller {};
-        template<>
-        struct gesv_caller<float> : func_obj<LAPACKE_sgesv> {};
-        template<>
-        struct gesv_caller<double> : func_obj<LAPACKE_dgesv> {};
+    #define DECLARE_CALLER(prefix) \
+        template<typename T> \
+        struct prefix ## _caller {}; \
+        template<> \
+        struct prefix ## _caller<float> : func_obj<LAPACKE_s ## prefix> {}; \
+        template<> \
+        struct prefix ## _caller<double> : func_obj<LAPACKE_d ## prefix> {}
 
-        template<typename T>
-        struct gels_caller {};
-        template<>
-        struct gels_caller<float> : func_obj<LAPACKE_sgels> {};
-        template<>
-        struct gels_caller<double> : func_obj<LAPACKE_dgels> {};
-
-        template<typename T>
-        struct getri_caller {};
-        template<>
-        struct getri_caller<float> : func_obj<LAPACKE_sgetri> {};
-        template<>
-        struct getri_caller<double> : func_obj<LAPACKE_dgetri> {};
-
-        template<typename T>
-        struct getrf_caller {};
-        template<>
-        struct getrf_caller<float> : func_obj<LAPACKE_sgetrf> {};
-        template<>
-        struct getrf_caller<double> : func_obj<LAPACKE_dgetrf> {};
-
-        template<typename T>
-        struct tptri_caller {};
-        template<>
-        struct tptri_caller<float> : func_obj<LAPACKE_stptri> {};
-        template<>
-        struct tptri_caller<double> : func_obj<LAPACKE_dtptri> {};
+        DECLARE_CALLER(gesv);
+        DECLARE_CALLER(gels);
+        DECLARE_CALLER(getri);
+        DECLARE_CALLER(getrf);
+        DECLARE_CALLER(tptri);
+        DECLARE_CALLER(trtri);
 
         template<typename Real, auto Func = gesv_caller<Real>::value>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -154,8 +134,30 @@ namespace
             std::generate(a_packed.begin(), a_packed.end(), gen);
 
             smp.do_sample();
-            int res = Func(LAPACK_COL_MAJOR, 'L', 'N', N, a_packed.data());
-            detail::handle_error(res);
+            int res = Func(LAPACK_ROW_MAJOR, 'L', 'N', N, a_packed.data());
+            handle_error(res);
+        }
+
+        template<typename Real, auto Func = trtri_caller<Real>::value>
+        void trtri_impl(std::size_t N, std::mt19937_64& engine)
+        {
+            static auto fill_lower_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            {
+                for (auto [it, non_zero] = std::pair{ from, 1 }; it < to; it += ld, non_zero++)
+                    for (auto entry = it; entry < it + non_zero; entry++)
+                        *entry = gen();
+            };
+
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a(N * N);
+            fill_lower_triangular(a.begin(), a.end(), N, gen);
+
+            smp.do_sample();
+            int res = Func(LAPACK_ROW_MAJOR, 'L', 'N', N, a.data(), N);
+            handle_error(res);
         }
     }
 
@@ -225,6 +227,18 @@ namespace
         detail::tptri_impl<float>(N, engine);
     }
 
+    __attribute__((noinline))
+        void dtrtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::trtri_impl<double>(N, engine);
+    }
+
+    __attribute__((noinline))
+        void strtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::trtri_impl<float>(N, engine);
+    }
+
     class cmdparams
     {
         std::size_t m = 0;
@@ -269,7 +283,7 @@ namespace
                 util::to_scalar(argv[2], n);
                 util::to_scalar(argv[3], nrhs);
             }
-            else if (func == dgetri || func == sgetri || func == dtptri || func == stptri)
+            else if (is_inversion(func))
             {
                 if (argc < 3)
                 {
@@ -296,12 +310,19 @@ namespace
             assert(func);
         }
 
-        void do_work(std::mt19937_64& engine)
+        void do_work(std::mt19937_64& engine) const
         {
             func(m, n, nrhs, engine);
         }
 
     private:
+        bool is_inversion(work_func func)
+        {
+            return func == dgetri || func == sgetri ||
+                func == dtptri || func == stptri ||
+                func == dtrtri || func == strtri;
+        }
+
         work_func get_work_func(const std::string& str)
         {
             if (str == "dgels")
@@ -324,6 +345,10 @@ namespace
                 return dtptri;
             if (str == "stptri")
                 return stptri;
+            if (str == "dtrtri")
+                return dtrtri;
+            if (str == "strtri")
+                return strtri;
             return nullptr;
         }
 
@@ -332,7 +357,8 @@ namespace
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dgesv,sgesv} <n> <nrhs>\n"
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
-                << "\t" << prog << " {dgetri,sgetri,dtptri,stptri} <n>\n"
+                << "\t" << prog << " {dgetri,sgetri} <n>\n"
+                << "\t" << prog << " {dtptri,stptri,dtrtri,strtri} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
@@ -340,11 +366,11 @@ namespace
 
 int main(int argc, char** argv)
 {
-    std::random_device rnd_dev;
-    std::mt19937_64 engine{ rnd_dev() };
     try
     {
-        cmdparams params(argc, argv);
+        const cmdparams params(argc, argv);
+        std::random_device rnd_dev;
+        std::mt19937_64 engine{ rnd_dev() };
         params.do_work(engine);
     }
     catch (const std::exception& e)
