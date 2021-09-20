@@ -6,6 +6,7 @@
 
 #include <cuda.h>
 #include <curand.h>
+#include <omp.h>
 
 #include <cassert>
 #include <iostream>
@@ -28,15 +29,6 @@ namespace
         return gen;
     }
 
-    curandGenerator_t curand_generator_create_host()
-    {
-        curandGenerator_t gen;
-        auto status = curandCreateGeneratorHost(&gen, CURAND_RNG_PSEUDO_MT19937);
-        if (status != CURAND_STATUS_SUCCESS)
-            throw std::runtime_error("Error creating device generator");
-        return gen;
-    }
-
     void curand_generator_destroy(curandGenerator_t gen)
     {
         auto status = curandDestroyGenerator(gen);
@@ -44,11 +36,25 @@ namespace
             std::cerr << "Error destroying cuRAND generator\n";
     }
 
-    void curand_set_generator_seed(curandGenerator_t gen, unsigned long long seed)
+    void curand_set_generator_seed(curandGenerator_t gen, std::random_device& rd)
     {
-        auto status = curandSetPseudoRandomGeneratorSeed(gen, seed);
+        auto status = curandSetPseudoRandomGeneratorSeed(gen,
+            static_cast<std::uint64_t>(rd()) << 32 | rd());
         if (status != CURAND_STATUS_SUCCESS)
             throw std::runtime_error("Error setting pseudo random generator seed");
+    }
+
+    std::vector<std::mt19937> get_engines(std::random_device& rd)
+    {
+        std::vector<std::mt19937> engines;
+        int max_threads = omp_get_max_threads();
+        engines.reserve(max_threads);
+        for (int i = 0; i < max_threads; i++)
+        {
+            std::seed_seq sseq{ rd(), rd(), rd() };
+            engines.emplace_back(sseq);
+        }
+        return engines;
     }
 
     using generator_handle = util::unique_handle<
@@ -83,16 +89,21 @@ namespace
     template<typename RealType>
     __attribute__((noinline))
         typename util::host_buffer<RealType>::size_type
-        generate_host(std::size_t count, curandGenerator_t gen)
+        generate_host(std::size_t count, std::vector<std::mt19937>& engines)
     {
         using namespace util;
         assert(count > 0);
         tp::sampler smp(g_tpr);
         host_buffer<RealType> host_buff{ count };
         smp.do_sample();
-        auto status = detail::generate_func<RealType>{}(gen, host_buff.get(), count);
-        if (status != CURAND_STATUS_SUCCESS)
-            throw std::runtime_error("Error generating uniform distribution");
+    #pragma omp parallel
+        {
+            auto& engine = engines[omp_get_thread_num()];
+            std::uniform_real_distribution<RealType> dist{ 0.0, 1.0 };
+        #pragma omp for
+            for (std::size_t i = 0; i < host_buff.size(); i++)
+                host_buff[i] = dist(engine);
+        }
         return host_buff.size();
     }
 
@@ -180,40 +191,39 @@ int main(int argc, char** argv)
 {
     try
     {
-        constexpr const auto seed = 85503686ULL;
-
-        auto create_generator = [](work_type::type wtype)
-        {
-            switch (wtype & (work_type::host | work_type::device))
-            {
-            case work_type::host:
-                return generator_handle(curand_generator_create_host());
-            case work_type::device:
-                return generator_handle(curand_generator_create_device());
-            }
-            throw std::runtime_error("create_generator: invalid work type");
-        };
-
-        auto execute_work = [](work_type::type wtype, std::size_t count, curandGenerator_t gen)
+        auto execute_work = [](work_type::type wtype, std::size_t count, std::random_device& rd)
         {
             switch (wtype)
             {
             case work_type::device | work_type::double_prec:
+            {
+                generator_handle gen{ curand_generator_create_device() };
+                curand_set_generator_seed(gen, rd);
                 return generate_device<double>(count, gen);
+            }
             case work_type::device | work_type::single_prec:
+            {
+                generator_handle gen{ curand_generator_create_device() };
+                curand_set_generator_seed(gen, rd);
                 return generate_device<float>(count, gen);
+            }
             case work_type::host | work_type::double_prec:
-                return generate_host<double>(count, gen);
+            {
+                auto engines = get_engines(rd);
+                return generate_host<double>(count, engines);
+            }
             case work_type::host | work_type::single_prec:
-                return generate_host<float>(count, gen);
+            {
+                auto engines = get_engines(rd);
+                return generate_host<float>(count, engines);
+            }
             }
             throw std::runtime_error("execute_work: invalid work type");
         };
 
-        cmdargs args(argc, argv);
-        auto gen = create_generator(args.wtype);
-        curand_set_generator_seed(gen, seed);
-        auto count = execute_work(args.wtype, args.count, gen);
+        const cmdargs args(argc, argv);
+        std::random_device rd;
+        auto count = execute_work(args.wtype, args.count, rd);
         std::cerr << "Generated " << count << " pseudorandom numbers\n";
     }
     catch (const std::exception& e)
