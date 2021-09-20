@@ -129,17 +129,11 @@ namespace util
         {}
 
         host_buffer(device_buffer<element_type>&& other) = delete;
-        host_buffer(const device_buffer<element_type>& other) :
+        explicit host_buffer(const device_buffer<element_type>& other) :
             host_buffer(other.size())
         {
             copy(other, *this);
         }
-
-        host_buffer& operator=(const device_buffer<element_type>& other)
-        {
-            copy(other, *this);
-            return *this;
-        };
 
         host_buffer(inherited&& other) :
             inherited(std::move(other))
@@ -201,15 +195,9 @@ namespace util
         {}
 
         device_buffer(host_buffer<element_type>&& other) = delete;
-        device_buffer(const host_buffer<element_type>& other) :
+        explicit device_buffer(const host_buffer<element_type>& other) :
             device_buffer(other.begin(), other.end())
         {}
-
-        device_buffer& operator=(const host_buffer<element_type>& other)
-        {
-            copy(other, *this);
-            return *this;
-        };
 
         ~device_buffer() = default;
     };
