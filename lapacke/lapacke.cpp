@@ -22,9 +22,12 @@ namespace
         void handle_error(int res)
         {
             if (res > 0)
-                throw std::logic_error("The solution could not be computed");
+                throw std::runtime_error(
+                    std::string("The solution could not be computed; info=").append(
+                        std::to_string(res)));
             if (res < 0)
-                throw std::runtime_error("Error during computation");
+                throw std::runtime_error(std::string("Error during computation; info=").append(
+                    std::to_string(res)));
         }
 
         template<auto Func>
@@ -57,6 +60,13 @@ namespace
         struct getrf_caller<float> : func_obj<LAPACKE_sgetrf> {};
         template<>
         struct getrf_caller<double> : func_obj<LAPACKE_dgetrf> {};
+
+        template<typename T>
+        struct tptri_caller {};
+        template<>
+        struct tptri_caller<float> : func_obj<LAPACKE_stptri> {};
+        template<>
+        struct tptri_caller<double> : func_obj<LAPACKE_dtptri> {};
 
         template<typename Real, auto Func = gesv_caller<Real>::value>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -132,6 +142,21 @@ namespace
             int res = Func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
+
+        template<typename Real, auto Func = tptri_caller<Real>::value>
+        void tptri_impl(std::size_t N, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a_packed(N * (N + 1) / 2);
+            std::generate(a_packed.begin(), a_packed.end(), gen);
+
+            smp.do_sample();
+            int res = Func(LAPACK_COL_MAJOR, 'L', 'N', N, a_packed.data());
+            detail::handle_error(res);
+        }
     }
 
     using work_func = void(*)(
@@ -140,76 +165,64 @@ namespace
         std::size_t,
         std::mt19937_64&);
 
-    __attribute__((noinline)) void dgesv(
-        std::size_t,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gesv_impl<double>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void sgesv(
-        std::size_t,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gesv_impl<float>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void dgels(
-        std::size_t M,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gels_impl<double>(M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void sgels(
-        std::size_t M,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gels_impl<float>(M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void dgetri(
-        std::size_t,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getri_impl<double>(N, engine);
     }
 
-    __attribute__((noinline)) void sgetri(
-        std::size_t,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getri_impl<float>(N, engine);
     }
 
-    __attribute__((noinline)) void dgetrf(
-        std::size_t M,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getrf_impl<double>(M, N, engine);
     }
 
-    __attribute__((noinline)) void sgetrf(
-        std::size_t M,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getrf_impl<float>(M, N, engine);
+    }
+
+    __attribute__((noinline))
+        void dtptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::tptri_impl<double>(N, engine);
+    }
+
+    __attribute__((noinline))
+        void stptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::tptri_impl<float>(N, engine);
     }
 
     class cmdparams
@@ -256,7 +269,7 @@ namespace
                 util::to_scalar(argv[2], n);
                 util::to_scalar(argv[3], nrhs);
             }
-            else if (func == dgetri || func == sgetri)
+            else if (func == dgetri || func == sgetri || func == dtptri || func == stptri)
             {
                 if (argc < 3)
                 {
@@ -307,6 +320,10 @@ namespace
                 return dgetrf;
             if (str == "sgetrf")
                 return sgetrf;
+            if (str == "dtptri")
+                return dtptri;
+            if (str == "stptri")
+                return stptri;
             return nullptr;
         }
 
@@ -315,7 +332,7 @@ namespace
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dgesv,sgesv} <n> <nrhs>\n"
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
-                << "\t" << prog << " {dgetri,sgetri} <n>\n"
+                << "\t" << prog << " {dgetri,sgetri,dtptri,stptri} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
