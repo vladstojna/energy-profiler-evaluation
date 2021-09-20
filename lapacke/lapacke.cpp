@@ -27,8 +27,8 @@ namespace
                 throw std::runtime_error("Error during computation");
         }
 
-        template<auto func>
-        struct func_obj : std::integral_constant<decltype(func), func> {};
+        template<auto Func>
+        struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
         template<typename T>
         struct gesv_caller {};
@@ -58,7 +58,7 @@ namespace
         template<>
         struct getrf_caller<double> : func_obj<LAPACKE_dgetrf> {};
 
-        template<typename Real>
+        template<typename Real, auto Func = gesv_caller<Real>::value>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -73,12 +73,11 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = gesv_caller<Real>{}(
-                LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
+            int res = Func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real>
+        template<typename Real, auto Func = gels_caller<Real>::value>
         void gels_impl(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -92,13 +91,14 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = gels_caller<Real>{}(
-                LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
+            int res = Func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real>
-        void getri_impl(std::size_t N, std::mt19937_64& engine)
+        template<typename Real,
+            auto Ffact = getrf_caller<Real>::value,
+            auto Finv = getri_caller<Real>::value
+        > void getri_impl(std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -109,17 +109,15 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = getrf_caller<Real>{}(
-                LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
+            int res = Ffact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
             handle_error(res);
 
             smp.do_sample();
-            res = getri_caller<Real>{}(
-                LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
+            res = Finv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
 
-        template<typename Real>
+        template<typename Real, auto Func = getrf_caller<Real>::value>
         void getrf_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -131,8 +129,7 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = getrf_caller<Real>{}(
-                LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+            int res = Func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
     }
