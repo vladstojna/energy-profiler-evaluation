@@ -27,8 +27,39 @@ namespace
                 throw std::runtime_error("Error during computation");
         }
 
-        template<typename Real, typename Func>
-        void gesv_impl(Func func, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+        template<auto func>
+        struct func_obj : std::integral_constant<decltype(func), func> {};
+
+        template<typename T>
+        struct gesv_caller {};
+        template<>
+        struct gesv_caller<float> : func_obj<LAPACKE_sgesv> {};
+        template<>
+        struct gesv_caller<double> : func_obj<LAPACKE_dgesv> {};
+
+        template<typename T>
+        struct gels_caller {};
+        template<>
+        struct gels_caller<float> : func_obj<LAPACKE_sgels> {};
+        template<>
+        struct gels_caller<double> : func_obj<LAPACKE_dgels> {};
+
+        template<typename T>
+        struct getri_caller {};
+        template<>
+        struct getri_caller<float> : func_obj<LAPACKE_sgetri> {};
+        template<>
+        struct getri_caller<double> : func_obj<LAPACKE_dgetri> {};
+
+        template<typename T>
+        struct getrf_caller {};
+        template<>
+        struct getrf_caller<float> : func_obj<LAPACKE_sgetrf> {};
+        template<>
+        struct getrf_caller<double> : func_obj<LAPACKE_dgetrf> {};
+
+        template<typename Real>
+        void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -42,17 +73,13 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
+            int res = gesv_caller<Real>{}(
+                LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real, typename Func>
-        void gels_impl(
-            Func func,
-            std::size_t M,
-            std::size_t N,
-            std::size_t Nrhs,
-            std::mt19937_64& engine)
+        template<typename Real>
+        void gels_impl(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -65,16 +92,13 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
+            int res = gels_caller<Real>{}(
+                LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real, typename FuncFact, typename FuncInv>
-        void getri_impl(
-            FuncFact func_fact,
-            FuncInv func_inv,
-            std::size_t N,
-            std::mt19937_64& engine)
+        template<typename Real>
+        void getri_impl(std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -85,20 +109,18 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = func_fact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
+            int res = getrf_caller<Real>{}(
+                LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
             handle_error(res);
 
             smp.do_sample();
-            res = func_inv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
+            res = getri_caller<Real>{}(
+                LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
 
-        template<typename Real, typename Func>
-        void getrf_impl(
-            Func func,
-            std::size_t M,
-            std::size_t N,
-            std::mt19937_64& engine)
+        template<typename Real>
+        void getrf_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -109,7 +131,8 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+            int res = getrf_caller<Real>{}(
+                LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
     }
@@ -126,7 +149,7 @@ namespace
         std::size_t Nrhs,
         std::mt19937_64& engine)
     {
-        detail::gesv_impl<double>(LAPACKE_dgesv, N, Nrhs, engine);
+        detail::gesv_impl<double>(N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void sgesv(
@@ -135,7 +158,7 @@ namespace
         std::size_t Nrhs,
         std::mt19937_64& engine)
     {
-        detail::gesv_impl<float>(LAPACKE_sgesv, N, Nrhs, engine);
+        detail::gesv_impl<float>(N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void dgels(
@@ -144,7 +167,7 @@ namespace
         std::size_t Nrhs,
         std::mt19937_64& engine)
     {
-        detail::gels_impl<double>(LAPACKE_dgels, M, N, Nrhs, engine);
+        detail::gels_impl<double>(M, N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void sgels(
@@ -153,7 +176,7 @@ namespace
         std::size_t Nrhs,
         std::mt19937_64& engine)
     {
-        detail::gels_impl<float>(LAPACKE_sgels, M, N, Nrhs, engine);
+        detail::gels_impl<float>(M, N, Nrhs, engine);
     }
 
     __attribute__((noinline)) void dgetri(
@@ -162,7 +185,7 @@ namespace
         std::size_t,
         std::mt19937_64& engine)
     {
-        detail::getri_impl<double>(LAPACKE_dgetrf, LAPACKE_dgetri, N, engine);
+        detail::getri_impl<double>(N, engine);
     }
 
     __attribute__((noinline)) void sgetri(
@@ -171,7 +194,7 @@ namespace
         std::size_t,
         std::mt19937_64& engine)
     {
-        detail::getri_impl<float>(LAPACKE_sgetrf, LAPACKE_sgetri, N, engine);
+        detail::getri_impl<float>(N, engine);
     }
 
     __attribute__((noinline)) void dgetrf(
@@ -180,7 +203,7 @@ namespace
         std::size_t,
         std::mt19937_64& engine)
     {
-        detail::getrf_impl<double>(LAPACKE_dgetrf, M, N, engine);
+        detail::getrf_impl<double>(M, N, engine);
     }
 
     __attribute__((noinline)) void sgetrf(
@@ -189,7 +212,7 @@ namespace
         std::size_t,
         std::mt19937_64& engine)
     {
-        detail::getrf_impl<float>(LAPACKE_sgetrf, M, N, engine);
+        detail::getrf_impl<float>(M, N, engine);
     }
 
     class cmdparams
