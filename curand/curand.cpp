@@ -91,10 +91,9 @@ namespace
         typename util::host_buffer<RealType>::size_type
         generate_host(std::size_t count, std::vector<std::mt19937>& engines)
     {
-        using namespace util;
         assert(count > 0);
         tp::sampler smp(g_tpr);
-        host_buffer<RealType> host_buff{ count };
+        util::host_buffer<RealType> host_buff{ count };
         smp.do_sample();
     #pragma omp parallel
         {
@@ -112,17 +111,15 @@ namespace
         typename util::host_buffer<RealType>::size_type
         generate_device(std::size_t count, curandGenerator_t gen)
     {
-        using namespace util;
         assert(count > 0);
         tp::sampler smp(g_tpr);
-        device_buffer<RealType> dev_buff{ count };
+        util::device_buffer<RealType> dev_buff{ count };
         smp.do_sample();
         auto status = detail::generate_func<RealType>{}(gen, dev_buff.get(), count);
         if (status != CURAND_STATUS_SUCCESS)
             throw std::runtime_error("Error generating uniform distribution");
         cudaDeviceSynchronize();
-        smp.do_sample();
-        return host_buffer{ dev_buff }.size();
+        return dev_buff.size();
     }
 
     namespace work_type
