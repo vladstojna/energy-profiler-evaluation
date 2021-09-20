@@ -88,22 +88,6 @@ namespace util
 
     template<typename T>
     class device_buffer;
-    template<typename T>
-    class host_buffer;
-
-    template<typename T>
-    void copy(
-        typename host_buffer<T>::const_iterator start,
-        typename host_buffer<T>::const_iterator end,
-        device_buffer<T>& into);
-    template<typename T>
-    void copy(const device_buffer<T>& from, typename host_buffer<T>::iterator into);
-    template<typename T>
-    void copy(const device_buffer<T>& from, host_buffer<T>& into);
-    template<typename T>
-    void copy(const host_buffer<T>& from, device_buffer<T>& into);
-    template<typename T>
-    void copy(const device_buffer<T>& from, device_buffer<T>& into);
 
     template<typename T>
     class host_buffer : private buffer<T>
@@ -224,26 +208,53 @@ namespace util
     }
 
     template<typename T>
-    void copy(const device_buffer<T>& from, typename host_buffer<T>::iterator into)
-    {
-        copy_impl(&*into, from.get(), from.size(), detail::device_to_host{});
-    }
-
-    template<typename T>
-    void copy(const device_buffer<T>& from, host_buffer<T>& into)
-    {
-        copy(from, into.begin());
-    }
-
-    template<typename T>
     void copy(const host_buffer<T>& from, device_buffer<T>& into)
     {
         copy(from.begin(), from.end(), into);
     }
 
     template<typename T>
+    void copy(
+        const device_buffer<T>& from,
+        typename host_buffer<T>::iterator into,
+        typename device_buffer<T>::size_type count)
+    {
+        copy_impl(&*into, from.get(), count, detail::device_to_host{});
+    }
+
+    template<typename T>
+    void copy(const device_buffer<T>& from, typename host_buffer<T>::iterator into)
+    {
+        copy(from, into, from.size());
+    }
+
+    template<typename T>
+    void copy(
+        const device_buffer<T>& from,
+        host_buffer<T>& into,
+        typename device_buffer<T>::size_type count)
+    {
+        copy(from, into.begin(), count);
+    }
+
+    template<typename T>
+    void copy(const device_buffer<T>& from, host_buffer<T>& into)
+    {
+        copy(from, into.begin(), from.size());
+    }
+
+    template<typename T>
+    void copy(
+        const device_buffer<T>& from,
+        device_buffer<T>& into,
+        typename device_buffer<T>::size_type count)
+    {
+        copy_impl(into.get(), from.get(), count, detail::device_to_device{});
+    }
+
+    template<typename T>
     void copy(const device_buffer<T>& from, device_buffer<T>& into)
     {
-        copy_impl(into.get(), from.get(), from.size(), detail::device_to_device{});
+        copy(from, into, from.size());
     }
 }
