@@ -9,14 +9,17 @@ namespace util
         template<typename T, typename Deleter = std::default_delete<T[]>>
         class unique_buffer
         {
-        private:
-            using holder = std::unique_ptr<T[], Deleter>;
+            static_assert(std::is_same_v<typename std::remove_cv_t<T>, T>,
+                "T must be a non-const, non-volatile type");
 
         public:
-            using pointer = typename holder::pointer;
-            using element_type = typename holder::element_type;
-            using deleter_type = typename holder::deleter_type;
             using size_type = std::size_t;
+            using value_type = T;
+            using pointer = value_type*;
+            using const_pointer = const value_type*;
+            using reference = value_type&;
+            using const_reference = const value_type&;
+            using deleter_type = Deleter;
 
             template<bool Const>
             struct iterator_impl
@@ -24,7 +27,7 @@ namespace util
                 using iterator_category = std::random_access_iterator_tag;
                 using difference_type = std::ptrdiff_t;
                 using size_type = std::size_t;
-                using value_type = element_type;
+                using value_type = unique_buffer::value_type;
                 using pointer = std::conditional_t<Const, const value_type*, value_type*>;
                 using reference = std::conditional_t<Const, const value_type&, value_type&>;
 
@@ -151,20 +154,18 @@ namespace util
             using iterator = iterator_impl<false>;
             using const_iterator = iterator_impl<true>;
 
-            template<typename U>
-            unique_buffer(U p, size_type size) noexcept :
+            unique_buffer(pointer p, size_type size) noexcept :
                 _data(p),
                 _size(size)
             {}
 
-            pointer get() const noexcept { return _data.get(); }
             size_type size() const noexcept { return _size; }
-            explicit operator bool() const noexcept { return bool(_data); }
+            pointer get() noexcept { return _data.get(); }
+            const_pointer get() const noexcept { return _data.get(); }
+            reference operator[](size_type i) { return _data[i]; }
+            const_reference operator[](size_type i) const { return _data[i]; }
 
-            std::add_lvalue_reference_t<element_type> operator[](size_type i) const
-            {
-                return _data[i];
-            }
+            explicit operator bool() const noexcept { return bool(_data); }
 
             iterator begin() noexcept { return iterator(_data.get()); }
             iterator end() noexcept { return iterator(_data.get() + _size); }
@@ -174,6 +175,7 @@ namespace util
             const_iterator cend() const noexcept { return end(); }
 
         private:
+            using holder = std::unique_ptr<value_type[], deleter_type>;
             holder _data;
             size_type _size;
         };

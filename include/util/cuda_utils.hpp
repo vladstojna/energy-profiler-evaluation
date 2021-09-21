@@ -95,7 +95,11 @@ namespace util
         using inherited = buffer<T>;
     public:
         using size_type = typename inherited::size_type;
-        using element_type = typename inherited::element_type;
+        using value_type = typename inherited::value_type;
+        using pointer = typename inherited::pointer;
+        using const_pointer = typename inherited::const_pointer;
+        using reference = typename inherited::reference;
+        using const_reference = typename inherited::const_reference;
         using iterator = typename inherited::iterator;
         using const_iterator = typename inherited::const_iterator;
 
@@ -112,8 +116,8 @@ namespace util
             inherited(size)
         {}
 
-        host_buffer(device_buffer<element_type>&& other) = delete;
-        explicit host_buffer(const device_buffer<element_type>& other) :
+        host_buffer(device_buffer<value_type>&& other) = delete;
+        explicit host_buffer(const device_buffer<value_type>& other) :
             host_buffer(other.size())
         {
             copy(other, *this);
@@ -138,14 +142,18 @@ namespace util
         using inherited = detail::unique_buffer<T, detail::as_lambda<device_free<T>>>;
     public:
         using size_type = typename inherited::size_type;
-        using element_type = typename inherited::element_type;
+        using value_type = typename inherited::value_type;
+        using pointer = typename inherited::pointer;
+        using const_pointer = typename inherited::const_pointer;
+        using reference = typename inherited::reference;
+        using const_reference = typename inherited::const_reference;
 
         using inherited::get;
         using inherited::size;
         using inherited::operator bool;
 
         explicit device_buffer(size_type size) :
-            inherited(device_alloc<element_type>(size), size)
+            inherited(device_alloc<value_type>(size), size)
         {}
 
         device_buffer(device_buffer&& other) noexcept = default;
@@ -163,8 +171,8 @@ namespace util
         }
 
         device_buffer(
-            typename host_buffer<element_type>::const_iterator start,
-            typename host_buffer<element_type>::const_iterator end)
+            typename host_buffer<value_type>::const_iterator start,
+            typename host_buffer<value_type>::const_iterator end)
             :
             device_buffer(std::distance(start, end))
         {
@@ -172,14 +180,14 @@ namespace util
         }
 
         device_buffer(
-            typename host_buffer<element_type>::const_iterator start,
-            typename host_buffer<element_type>::size_type count)
+            typename host_buffer<value_type>::const_iterator start,
+            typename host_buffer<value_type>::size_type count)
             :
             device_buffer(start, start + count)
         {}
 
-        device_buffer(host_buffer<element_type>&& other) = delete;
-        explicit device_buffer(const host_buffer<element_type>& other) :
+        device_buffer(host_buffer<value_type>&& other) = delete;
+        explicit device_buffer(const host_buffer<value_type>& other) :
             device_buffer(other.begin(), other.end())
         {}
 

@@ -14,7 +14,11 @@ namespace util
 
     public:
         using size_type = typename inherited::size_type;
-        using element_type = typename inherited::element_type;
+        using value_type = typename inherited::value_type;
+        using pointer = typename inherited::pointer;
+        using const_pointer = typename inherited::const_pointer;
+        using reference = typename inherited::reference;
+        using const_reference = typename inherited::const_reference;
         using iterator = typename inherited::iterator;
         using const_iterator = typename inherited::const_iterator;
 
@@ -28,7 +32,7 @@ namespace util
         using inherited::cend;
 
         explicit buffer(size_type size) :
-            inherited(new T[size], size)
+            inherited(new value_type[size], size)
         {}
 
         buffer(buffer&& other) noexcept = default;
