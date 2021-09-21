@@ -194,7 +194,7 @@ namespace
         }
 
         template<typename Real>
-        void spgemm_impl(
+        typename util::host_buffer<Real>::size_type spgemm_impl(
             std::int32_t M,
             std::int32_t N,
             std::int32_t K,
@@ -341,11 +341,12 @@ namespace
 
             util::host_buffer c_values{ dc_values };
             util::host_buffer c_csr_rows{ dc_csr_rows };
-            util::host_buffer c_coo_cols{ dc_csr_rows };
+            util::host_buffer c_coo_cols{ dc_coo_cols };
+            return c_values.size();
         }
     }
 
-    __attribute__((noinline)) void spdgemm(
+    __attribute__((noinline)) auto spdgemm(
         std::int32_t M,
         std::int32_t N,
         std::int32_t K,
@@ -354,10 +355,10 @@ namespace
         cusparse_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::spgemm_impl<double>(M, N, K, A_nnz, B_nnz, handle, engine);
+        return detail::spgemm_impl<double>(M, N, K, A_nnz, B_nnz, handle, engine);
     }
 
-    __attribute__((noinline)) void spsgemm(
+    __attribute__((noinline)) auto spsgemm(
         std::int32_t M,
         std::int32_t N,
         std::int32_t K,
@@ -366,7 +367,7 @@ namespace
         cusparse_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::spgemm_impl<float>(M, N, K, A_nnz, B_nnz, handle, engine);
+        return detail::spgemm_impl<float>(M, N, K, A_nnz, B_nnz, handle, engine);
     }
 
     struct cmdargs
@@ -415,9 +416,9 @@ namespace
             assert(func);
         }
 
-        void do_work(cusparse_handle& handle, std::mt19937_64& engine) const
+        auto do_work(cusparse_handle& handle, std::mt19937_64& engine) const
         {
-            func(m, n, k, a_nnz, b_nnz, handle, engine);
+            return func(m, n, k, a_nnz, b_nnz, handle, engine);
         }
 
     private:
@@ -436,7 +437,10 @@ int main(int argc, char** argv)
         std::random_device rnd_dev;
         std::mt19937_64 engine{ rnd_dev() };
         cusparse_handle handle(cusparse_create());
-        args.do_work(handle, engine);
+        auto nnz = args.do_work(handle, engine);
+        std::cerr << "Resulting matrix: "
+            << args.m << "x" << args.n
+            << " with " << nnz << " non-zero entries\n";
     }
     catch (const std::exception& e)
     {
