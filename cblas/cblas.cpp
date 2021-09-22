@@ -17,16 +17,22 @@ namespace
 {
     tp::printer g_tpr;
 
-    using work_func = void(*)(
-        std::size_t,
-        std::size_t,
-        std::size_t,
-        std::mt19937_64&);
-
     namespace detail
     {
-        template<typename Real, CBLAS_TRANSPOSE Trans, typename Func>
-        void gemm_impl(Func func, std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+        template<auto Func>
+        struct func_obj : std::integral_constant<decltype(Func), Func> {};
+
+        template<typename>
+        struct gemm_caller {};
+
+        template<>
+        struct gemm_caller<float> : func_obj<cblas_sgemm> {};
+
+        template<>
+        struct gemm_caller<double> : func_obj<cblas_dgemm> {};
+
+        template<typename Real, CBLAS_TRANSPOSE Trans, auto Func = gemm_caller<Real>::value>
+        void gemm_impl(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -39,7 +45,7 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            func(CblasRowMajor, CblasNoTrans, Trans,
+            Func(CblasRowMajor, CblasNoTrans, Trans,
                 M, N, K, 1.0,
                 a.data(), K,
                 b.data(), N,
@@ -48,38 +54,32 @@ namespace
         }
     }
 
-    __attribute__((noinline)) void dgemm_no_transpose(
-        std::size_t M,
-        std::size_t N,
-        std::size_t K,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
-        return detail::gemm_impl<double, CblasNoTrans>(cblas_dgemm, M, N, K, engine);
+        detail::gemm_impl<double, CblasNoTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline)) void dgemm(
-        std::size_t M,
-        std::size_t N,
-        std::size_t K,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
-        return detail::gemm_impl<double, CblasTrans>(cblas_dgemm, M, N, K, engine);
+        detail::gemm_impl<double, CblasTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline)) void sgemm(
-        std::size_t M,
-        std::size_t N,
-        std::size_t K,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
-        return detail::gemm_impl<float, CblasTrans>(cblas_sgemm, M, N, K, engine);
+        detail::gemm_impl<float, CblasNoTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline)) void dgemv(
-        std::size_t M,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    {
+        detail::gemm_impl<float, CblasTrans>(M, N, K, engine);
+    }
+
+    __attribute__((noinline))
+        void dgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         std::uniform_real_distribution<double> dist{ 0.0, 1.0 };
         auto gen = [&]() { return dist(engine); };
@@ -98,14 +98,14 @@ namespace
             0, y.data(), 1);
     }
 
-    class cmdparams
+    struct cmdparams
     {
+        using work_func = decltype(&sgemm);
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
         work_func func = nullptr;
 
-    public:
         cmdparams(int argc, const char* const* argv)
         {
             if (argc < 4)
@@ -135,9 +135,11 @@ namespace
                 if (op_type == "dgemm")
                     func = dgemm;
                 else if (op_type == "dgemm_notrans")
-                    func = dgemm_no_transpose;
+                    func = dgemm_notrans;
                 else if (op_type == "sgemm")
                     func = sgemm;
+                else if (op_type == "sgemm_notrans")
+                    func = sgemm_notrans;
                 else
                 {
                     print_usage(argv[0]);
@@ -156,7 +158,7 @@ namespace
         void print_usage(const char* prog)
         {
             std::cerr << "Usage: " << prog
-                << " {dgemm,dgemm_notrans,sgemm,dgemv} <m> <n> <k>\n";
+                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans,dgemv} <m> <n> <k>\n";
         }
     };
 }

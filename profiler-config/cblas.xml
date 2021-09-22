@@ -8,9 +8,9 @@
 
     <sections>
 
-        <section target="cpu" label="dgemm_no_transpose">
+        <section target="cpu" label="dgemm_notrans">
             <bounds>
-                <func name="(anonymous namespace)::dgemm_no_transpose"/>
+                <func name="(anonymous namespace)::dgemm_notrans"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
@@ -26,9 +26,18 @@
             <interval>100</interval>
         </section>
 
+        <section target="cpu" label="sgemm_notrans">
+            <bounds>
+                <func name="(anonymous namespace)::sgemm_notrans"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
         <section target="cpu" label="sgemm">
             <bounds>
-                <func name="(anonymous namespace)::sgemm"/>
+                <func name="(anonymous namespace)::sgemm("/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
