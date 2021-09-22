@@ -1,3 +1,8 @@
+# VSCode
+.vscode/
+*.code-workspace
+.history/
+
 # Prerequisites
 *.d
 
