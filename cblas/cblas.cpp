@@ -17,16 +17,22 @@ namespace
 {
     tp::printer g_tpr;
 
-    using work_func = void(*)(
-        std::size_t,
-        std::size_t,
-        std::size_t,
-        std::mt19937_64&);
-
     namespace detail
     {
-        template<typename Real, CBLAS_TRANSPOSE Trans, typename Func>
-        void gemm_impl(Func func, std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+        template<auto Func>
+        struct func_obj : std::integral_constant<decltype(Func), Func> {};
+
+        template<typename>
+        struct gemm_caller {};
+
+        template<>
+        struct gemm_caller<float> : func_obj<cblas_sgemm> {};
+
+        template<>
+        struct gemm_caller<double> : func_obj<cblas_dgemm> {};
+
+        template<typename Real, CBLAS_TRANSPOSE Trans, auto Func = gemm_caller<Real>::value>
+        void gemm_impl(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -39,7 +45,7 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            func(CblasRowMajor, CblasNoTrans, Trans,
+            Func(CblasRowMajor, CblasNoTrans, Trans,
                 M, N, K, 1.0,
                 a.data(), K,
                 b.data(), N,
@@ -54,7 +60,7 @@ namespace
         std::size_t K,
         std::mt19937_64& engine)
     {
-        return detail::gemm_impl<double, CblasNoTrans>(cblas_dgemm, M, N, K, engine);
+        return detail::gemm_impl<double, CblasNoTrans>(M, N, K, engine);
     }
 
     __attribute__((noinline)) void dgemm(
@@ -63,7 +69,7 @@ namespace
         std::size_t K,
         std::mt19937_64& engine)
     {
-        return detail::gemm_impl<double, CblasTrans>(cblas_dgemm, M, N, K, engine);
+        return detail::gemm_impl<double, CblasTrans>(M, N, K, engine);
     }
 
     __attribute__((noinline)) void sgemm(
@@ -72,7 +78,7 @@ namespace
         std::size_t K,
         std::mt19937_64& engine)
     {
-        return detail::gemm_impl<float, CblasTrans>(cblas_sgemm, M, N, K, engine);
+        return detail::gemm_impl<float, CblasTrans>(M, N, K, engine);
     }
 
     __attribute__((noinline)) void dgemv(
@@ -98,14 +104,14 @@ namespace
             0, y.data(), 1);
     }
 
-    class cmdparams
+    struct cmdparams
     {
+        using work_func = decltype(&sgemm);
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
         work_func func = nullptr;
 
-    public:
         cmdparams(int argc, const char* const* argv)
         {
             if (argc < 4)
