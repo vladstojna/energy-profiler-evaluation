@@ -11,6 +11,7 @@
 #include <cassert>
 #include <random>
 #include <tuple>
+#include <vector>
 
 namespace
 {
@@ -134,11 +135,38 @@ namespace
         >;
 
         util::host_buffer<std::int32_t>
-            get_coo_rows(std::int32_t N, std::size_t NNZ, std::mt19937_64& engine)
+            get_coo_rows(std::int32_t M, std::int32_t N, std::size_t NNZ, std::mt19937_64& engine)
         {
-            std::uniform_int_distribution<decltype(N)> dist{ 0, N - 1 };
+            std::uniform_int_distribution<decltype(M)> dist{ 0, M - 1 };
             util::host_buffer<std::int32_t> indices{ NNZ };
-            std::generate(indices.begin(), indices.end(), [&]() { return dist(engine); });
+
+            // generate random numbers but ensure
+            // that there are no more than N equal values
+            std::vector<std::int32_t> existing(M, 0);
+            auto gen = [&]()
+            {
+                constexpr const std::int32_t max_iters = 100;
+                for (auto i = 0; i < max_iters; i++)
+                {
+                    decltype(dist)::result_type val = dist(engine);
+                    if (existing[val] < N)
+                    {
+                        existing[val]++;
+                        return val;
+                    }
+                }
+                std::cerr << "Could not generate unique random number after "
+                    << max_iters << " tries, looking for first row number less than N\n";
+                auto it = std::find_if(existing.begin(), existing.end(),
+                    [N](std::int32_t val) { return val < N; });
+                assert(it != existing.end());
+                if (it == existing.end())
+                    throw std::runtime_error("More non-zero entries than matrix entries");
+                (*it)++;
+                return static_cast<decltype(M)>(std::distance(existing.begin(), it));
+            };
+
+            std::generate(indices.begin(), indices.end(), gen);
             std::sort(indices.begin(), indices.end());
             return indices;
         }
@@ -151,7 +179,6 @@ namespace
             assert(coo_rows.size());
             std::uniform_int_distribution<decltype(N)> dist{ 0, N - 1 };
             util::host_buffer<std::int32_t> indices{ coo_rows.size() };
-            std::generate(indices.begin(), indices.end(), [&]() { return dist(engine); });
 
             // sort the column indices for each row
             // assume coo_rows is already sorted
@@ -162,11 +189,37 @@ namespace
                     indices.begin(),
                     std::next(indices.begin())
                 };
-                rit < coo_rows.end() && cit < indices.end();
+                rit <= coo_rows.end() && cit <= indices.end();
                 rit++, cit++)
             {
-                if (*rit > *rprev)
+                if (rit == coo_rows.end() || *rit > *rprev)
                 {
+                    // generate random numbers for this interval
+                    // but numbers must be unique because (row, column) index pairs are unique
+                    // in COO format
+                    std::vector<bool> existing(N, false);
+                    auto gen = [&]()
+                    {
+                        constexpr const std::int32_t max_iters = 100;
+                        for (auto i = 0; i < max_iters; i++)
+                        {
+                            decltype(dist)::result_type val = dist(engine);
+                            if (!existing[val])
+                            {
+                                existing[val] = true;
+                                return val;
+                            }
+                        }
+                        std::cerr << "Could not generate unique random number after "
+                            << max_iters << " tries, looking for first row number less than N\n";
+                        auto it = std::find(existing.begin(), existing.end(), false);
+                        assert(it != existing.end());
+                        if (it == existing.end())
+                            throw std::runtime_error("More non-zero entries than matrix entries");
+                        *it = true;
+                        return static_cast<decltype(N)>(std::distance(existing.begin(), it));
+                    };
+                    std::generate(cprev, cit, gen);
                     std::sort(cprev, cit);
                     rprev = rit;
                     cprev = cit;
@@ -217,9 +270,9 @@ namespace
             std::generate(a_values.begin(), a_values.end(), gen);
             std::generate(b_values.begin(), b_values.end(), gen);
 
-            util::host_buffer<std::int32_t> a_coo_rows = get_coo_rows(M, A_nnz, engine);
+            util::host_buffer<std::int32_t> a_coo_rows = get_coo_rows(M, K, A_nnz, engine);
             util::host_buffer<std::int32_t> a_coo_cols = get_coo_cols(K, engine, a_coo_rows);
-            util::host_buffer<std::int32_t> b_coo_rows = get_coo_rows(K, B_nnz, engine);
+            util::host_buffer<std::int32_t> b_coo_rows = get_coo_rows(K, N, B_nnz, engine);
             util::host_buffer<std::int32_t> b_coo_cols = get_coo_cols(N, engine, b_coo_rows);
 
             smp.do_sample();
