@@ -22,13 +22,34 @@ namespace
         void handle_error(int res)
         {
             if (res > 0)
-                throw std::logic_error("The solution could not be computed");
+                throw std::runtime_error(
+                    std::string("The solution could not be computed; info=").append(
+                        std::to_string(res)));
             if (res < 0)
-                throw std::runtime_error("Error during computation");
+                throw std::runtime_error(std::string("Error during computation; info=").append(
+                    std::to_string(res)));
         }
 
-        template<typename Real, typename Func>
-        void gesv_impl(Func func, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+        template<auto Func>
+        struct func_obj : std::integral_constant<decltype(Func), Func> {};
+
+    #define DECLARE_CALLER(prefix) \
+        template<typename T> \
+        struct prefix ## _caller {}; \
+        template<> \
+        struct prefix ## _caller<float> : func_obj<LAPACKE_s ## prefix> {}; \
+        template<> \
+        struct prefix ## _caller<double> : func_obj<LAPACKE_d ## prefix> {}
+
+        DECLARE_CALLER(gesv);
+        DECLARE_CALLER(gels);
+        DECLARE_CALLER(getri);
+        DECLARE_CALLER(getrf);
+        DECLARE_CALLER(tptri);
+        DECLARE_CALLER(trtri);
+
+        template<typename Real, auto Func = gesv_caller<Real>::value>
+        void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -42,17 +63,12 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
+            int res = Func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real, typename Func>
-        void gels_impl(
-            Func func,
-            std::size_t M,
-            std::size_t N,
-            std::size_t Nrhs,
-            std::mt19937_64& engine)
+        template<typename Real, auto Func = gels_caller<Real>::value>
+        void gels_impl(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -65,16 +81,14 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
+            int res = Func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real, typename FuncFact, typename FuncInv>
-        void getri_impl(
-            FuncFact func_fact,
-            FuncInv func_inv,
-            std::size_t N,
-            std::mt19937_64& engine)
+        template<typename Real,
+            auto Ffact = getrf_caller<Real>::value,
+            auto Finv = getri_caller<Real>::value
+        > void getri_impl(std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -85,20 +99,16 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = func_fact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
+            int res = Ffact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
             handle_error(res);
 
             smp.do_sample();
-            res = func_inv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
+            res = Finv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
 
-        template<typename Real, typename Func>
-        void getrf_impl(
-            Func func,
-            std::size_t M,
-            std::size_t N,
-            std::mt19937_64& engine)
+        template<typename Real, auto Func = getrf_caller<Real>::value>
+        void getrf_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -109,7 +119,44 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+            int res = Func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+            handle_error(res);
+        }
+
+        template<typename Real, auto Func = tptri_caller<Real>::value>
+        void tptri_impl(std::size_t N, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a_packed(N * (N + 1) / 2);
+            std::generate(a_packed.begin(), a_packed.end(), gen);
+
+            smp.do_sample();
+            int res = Func(LAPACK_ROW_MAJOR, 'L', 'N', N, a_packed.data());
+            handle_error(res);
+        }
+
+        template<typename Real, auto Func = trtri_caller<Real>::value>
+        void trtri_impl(std::size_t N, std::mt19937_64& engine)
+        {
+            static auto fill_lower_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            {
+                for (auto [it, non_zero] = std::pair{ from, 1 }; it < to; it += ld, non_zero++)
+                    for (auto entry = it; entry < it + non_zero; entry++)
+                        *entry = gen();
+            };
+
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a(N * N);
+            fill_lower_triangular(a.begin(), a.end(), N, gen);
+
+            smp.do_sample();
+            int res = Func(LAPACK_ROW_MAJOR, 'L', 'N', N, a.data(), N);
             handle_error(res);
         }
     }
@@ -120,76 +167,76 @@ namespace
         std::size_t,
         std::mt19937_64&);
 
-    __attribute__((noinline)) void dgesv(
-        std::size_t,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
-        detail::gesv_impl<double>(LAPACKE_dgesv, N, Nrhs, engine);
+        detail::gesv_impl<double>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void sgesv(
-        std::size_t,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
-        detail::gesv_impl<float>(LAPACKE_sgesv, N, Nrhs, engine);
+        detail::gesv_impl<float>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void dgels(
-        std::size_t M,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
-        detail::gels_impl<double>(LAPACKE_dgels, M, N, Nrhs, engine);
+        detail::gels_impl<double>(M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void sgels(
-        std::size_t M,
-        std::size_t N,
-        std::size_t Nrhs,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
-        detail::gels_impl<float>(LAPACKE_sgels, M, N, Nrhs, engine);
+        detail::gels_impl<float>(M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline)) void dgetri(
-        std::size_t,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        detail::getri_impl<double>(LAPACKE_dgetrf, LAPACKE_dgetri, N, engine);
+        detail::getri_impl<double>(N, engine);
     }
 
-    __attribute__((noinline)) void sgetri(
-        std::size_t,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        detail::getri_impl<float>(LAPACKE_sgetrf, LAPACKE_sgetri, N, engine);
+        detail::getri_impl<float>(N, engine);
     }
 
-    __attribute__((noinline)) void dgetrf(
-        std::size_t M,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void dgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        detail::getrf_impl<double>(LAPACKE_dgetrf, M, N, engine);
+        detail::getrf_impl<double>(M, N, engine);
     }
 
-    __attribute__((noinline)) void sgetrf(
-        std::size_t M,
-        std::size_t N,
-        std::size_t,
-        std::mt19937_64& engine)
+    __attribute__((noinline))
+        void sgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        detail::getrf_impl<float>(LAPACKE_sgetrf, M, N, engine);
+        detail::getrf_impl<float>(M, N, engine);
+    }
+
+    __attribute__((noinline))
+        void dtptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::tptri_impl<double>(N, engine);
+    }
+
+    __attribute__((noinline))
+        void stptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::tptri_impl<float>(N, engine);
+    }
+
+    __attribute__((noinline))
+        void dtrtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::trtri_impl<double>(N, engine);
+    }
+
+    __attribute__((noinline))
+        void strtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::trtri_impl<float>(N, engine);
     }
 
     class cmdparams
@@ -236,7 +283,7 @@ namespace
                 util::to_scalar(argv[2], n);
                 util::to_scalar(argv[3], nrhs);
             }
-            else if (func == dgetri || func == sgetri)
+            else if (is_inversion(func))
             {
                 if (argc < 3)
                 {
@@ -263,12 +310,19 @@ namespace
             assert(func);
         }
 
-        void do_work(std::mt19937_64& engine)
+        void do_work(std::mt19937_64& engine) const
         {
             func(m, n, nrhs, engine);
         }
 
     private:
+        bool is_inversion(work_func func)
+        {
+            return func == dgetri || func == sgetri ||
+                func == dtptri || func == stptri ||
+                func == dtrtri || func == strtri;
+        }
+
         work_func get_work_func(const std::string& str)
         {
             if (str == "dgels")
@@ -287,6 +341,14 @@ namespace
                 return dgetrf;
             if (str == "sgetrf")
                 return sgetrf;
+            if (str == "dtptri")
+                return dtptri;
+            if (str == "stptri")
+                return stptri;
+            if (str == "dtrtri")
+                return dtrtri;
+            if (str == "strtri")
+                return strtri;
             return nullptr;
         }
 
@@ -296,6 +358,7 @@ namespace
                 << "\t" << prog << " {dgesv,sgesv} <n> <nrhs>\n"
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
                 << "\t" << prog << " {dgetri,sgetri} <n>\n"
+                << "\t" << prog << " {dtptri,stptri,dtrtri,strtri} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
@@ -303,11 +366,11 @@ namespace
 
 int main(int argc, char** argv)
 {
-    std::random_device rnd_dev;
-    std::mt19937_64 engine{ rnd_dev() };
     try
     {
-        cmdparams params(argc, argv);
+        const cmdparams params(argc, argv);
+        std::random_device rnd_dev;
+        std::mt19937_64 engine{ rnd_dev() };
         params.do_work(engine);
     }
     catch (const std::exception& e)
