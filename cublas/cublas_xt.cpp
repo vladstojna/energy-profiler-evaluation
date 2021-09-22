@@ -1,10 +1,11 @@
-#include <cublasXt.h>
 #include <timeprinter/printer.hpp>
 #include <util/to_scalar.hpp>
+#include <util/unique_handle.hpp>
+
+#include <cublasXt.h>
 
 #include <algorithm>
 #include <cassert>
-#include <charconv>
 #include <random>
 #include <vector>
 
@@ -12,44 +13,34 @@ namespace
 {
     tp::printer g_tpr;
 
-    class cublas_xt_handle
+    template<auto Func>
+    struct func_obj : std::integral_constant<decltype(Func), Func> {};
+
+    cublasXtHandle_t cublasxt_create()
     {
-        cublasXtHandle_t _handle;
+        cublasXtHandle_t handle;
+        if (auto ret = cublasXtCreate(&handle); ret != CUBLAS_STATUS_SUCCESS)
+            throw std::runtime_error("Error instantiating cuBLASXt");
+        return handle;
+    }
 
-    public:
-        cublas_xt_handle() :
-            _handle(nullptr)
-        {
-            if (cublasStatus_t ret = cublasXtCreate(&_handle); ret != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error instantiating cuBLAS");
-        }
+    void cublasxt_destroy(cublasXtHandle_t handle)
+    {
+        if (auto ret = cublasXtDestroy(handle); ret != CUBLAS_STATUS_SUCCESS)
+            std::cerr << "Error destroying cuBLASXt\n";
+    }
 
-        ~cublas_xt_handle()
-        {
-            if (cublasStatus_t ret = cublasXtDestroy(_handle); ret != CUBLAS_STATUS_SUCCESS)
-                std::cerr << "Error destroying cuBLAS\n";
-        }
-
-        cublasXtHandle_t get()
-        {
-            return _handle;
-        }
-
-        operator cublasXtHandle_t ()
-        {
-            return get();
-        }
-    };
-
-    using work_func = void(*)(
-        std::size_t,
-        std::size_t,
-        std::size_t,
-        cublasXtHandle_t,
-        std::mt19937_64&);
+    using cublasxt_handle = util::unique_handle<cublasXtHandle_t, func_obj<cublasxt_destroy>>;
 
     namespace detail
     {
+        template<typename>
+        struct gemm_caller {};
+        template<>
+        struct gemm_caller<float> : func_obj<cublasXtSgemm> {};
+        template<>
+        struct gemm_caller<double> : func_obj<cublasXtDgemm> {};
+
         void handle_error(cublasStatus_t status)
         {
             if (status == CUBLAS_STATUS_SUCCESS)
@@ -67,13 +58,12 @@ namespace
             }
         }
 
-        template<typename Real, typename Func>
+        template<typename Real, auto Func = gemm_caller<Real>::value>
         void gemm_impl(
-            Func func,
             std::size_t M,
             std::size_t N,
             std::size_t K,
-            cublasXtHandle_t handle,
+            cublasxt_handle& handle,
             std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -86,11 +76,11 @@ namespace
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
-            Real alpha = 1;
-            Real beta = 0;
+            Real alpha = 1.0;
+            Real beta = 0.0;
 
             smp.do_sample();
-            cublasStatus_t res = func(
+            cublasStatus_t res = Func(
                 handle,
                 CUBLAS_OP_N,
                 CUBLAS_OP_N,
@@ -106,30 +96,30 @@ namespace
         std::size_t M,
         std::size_t N,
         std::size_t K,
-        cublasXtHandle_t handle,
+        cublasxt_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<double>(cublasXtDgemm, M, N, K, handle, engine);
+        detail::gemm_impl<double>(M, N, K, handle, engine);
     }
 
     __attribute__((noinline)) void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
-        cublasXtHandle_t handle,
+        cublasxt_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<float>(cublasXtSgemm, M, N, K, handle, engine);
+        detail::gemm_impl<float>(M, N, K, handle, engine);
     }
 
-    void set_first_device(cublasXtHandle_t handle)
+    void set_first_device(cublasxt_handle& handle)
     {
         int device_ids[] = { 0 };
         if (auto res = cublasXtDeviceSelect(handle, 1, device_ids); res != CUBLAS_STATUS_SUCCESS)
             throw std::runtime_error("cublasXtDeviceSelect error");
     }
 
-    void set_block_dim(cublasXtHandle_t handle, int block_dim)
+    void set_block_dim(cublasxt_handle& handle, int block_dim)
     {
         if (auto res = cublasXtSetBlockDim(handle, block_dim); res != CUBLAS_STATUS_SUCCESS)
             throw std::runtime_error("cublasXtSetBlockDim error");
@@ -137,6 +127,7 @@ namespace
 
     struct cmdargs
     {
+        using work_func = decltype(&sgemm);
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
@@ -180,7 +171,7 @@ namespace
             }
         }
 
-        void do_work(cublasXtHandle_t handle, std::mt19937_64& engine) const
+        void do_work(cublasxt_handle& handle, std::mt19937_64& engine) const
         {
             func(m, n, k, handle, engine);
         }
@@ -197,11 +188,10 @@ int main(int argc, char** argv)
 {
     try
     {
-        cmdargs args(argc, argv);
+        const cmdargs args(argc, argv);
         std::random_device rnd_dev;
         std::mt19937_64 engine{ rnd_dev() };
-
-        cublas_xt_handle handle;
+        cublasxt_handle handle{ cublasxt_create() };
         set_first_device(handle);
         if (args.block_dim)
             set_block_dim(handle, args.block_dim);
