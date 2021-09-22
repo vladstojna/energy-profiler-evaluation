@@ -39,11 +39,11 @@ namespace
     namespace detail
     {
         template<typename>
-        struct dgemm_caller {};
+        struct gemm_caller {};
         template<>
-        struct dgemm_caller<float> : func_obj<cublasSgemm> {};
+        struct gemm_caller<float> : func_obj<cublasSgemm> {};
         template<>
-        struct dgemm_caller<double> : func_obj<cublasDgemm> {};
+        struct gemm_caller<double> : func_obj<cublasDgemm> {};
 
         void handle_error(cublasStatus_t status)
         {
@@ -64,7 +64,7 @@ namespace
             }
         }
 
-        template<typename Real, auto Func = dgemm_caller<Real>::value>
+        template<typename Real, auto Func = gemm_caller<Real>::value>
         void gemm_impl(
             std::size_t M,
             std::size_t N,
