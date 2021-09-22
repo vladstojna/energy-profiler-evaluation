@@ -85,30 +85,12 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            util::device_buffer<Real> dev_a{ a.size() };
-            util::device_buffer<Real> dev_b{ b.size() };
+            util::device_buffer dev_a{ a };
+            util::device_buffer dev_b{ b };
             util::device_buffer<Real> dev_c{ c.size() };
-            auto res = cublasSetMatrix(
-                M, K, sizeof(typename decltype(a)::value_type),
-                a.get(), M,
-                dev_a.get(), M);
-            if (res != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error setting matrix A");
-            res = cublasSetMatrix(
-                K, N, sizeof(typename decltype(b)::value_type),
-                b.get(), K,
-                dev_b.get(), K);
-            if (res != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error setting matrix B");
-            res = cublasSetMatrix(
-                M, N, sizeof(typename decltype(c)::value_type),
-                c.get(), M,
-                dev_c.get(), M);
-            if (res != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error setting matrix C");
 
             smp.do_sample();
-            res = Func(
+            auto res = Func(
                 handle,
                 CUBLAS_OP_N,
                 CUBLAS_OP_N,
@@ -121,24 +103,9 @@ namespace
             cudaDeviceSynchronize();
 
             smp.do_sample();
-            res = cublasGetMatrix(
-                M, K, sizeof(typename decltype(dev_a)::value_type),
-                dev_a.get(), M,
-                a.get(), M);
-            if (res != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error getting matrix A");
-            res = cublasGetMatrix(
-                K, N, sizeof(typename decltype(dev_b)::value_type),
-                dev_b.get(), K,
-                b.get(), K);
-            if (res != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error getting matrix B");
-            res = cublasGetMatrix(
-                M, N, sizeof(typename decltype(dev_c)::value_type),
-                dev_c.get(), M,
-                c.get(), M);
-            if (res != CUBLAS_STATUS_SUCCESS)
-                throw std::runtime_error("Error getting matrix C");
+            util::copy(dev_a, a);
+            util::copy(dev_b, b);
+            util::copy(dev_c, c);
         }
     }
 
