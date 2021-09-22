@@ -67,6 +67,12 @@ namespace
     }
 
     __attribute__((noinline))
+        void sgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    {
+        detail::gemm_impl<float, CblasNoTrans>(M, N, K, engine);
+    }
+
+    __attribute__((noinline))
         void sgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
         detail::gemm_impl<float, CblasTrans>(M, N, K, engine);
@@ -132,6 +138,8 @@ namespace
                     func = dgemm_notrans;
                 else if (op_type == "sgemm")
                     func = sgemm;
+                else if (op_type == "sgemm_notrans")
+                    func = sgemm_notrans;
                 else
                 {
                     print_usage(argv[0]);
@@ -150,7 +158,7 @@ namespace
         void print_usage(const char* prog)
         {
             std::cerr << "Usage: " << prog
-                << " {dgemm,dgemm_notrans,sgemm,dgemv} <m> <n> <k>\n";
+                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans,dgemv} <m> <n> <k>\n";
         }
     };
 }
