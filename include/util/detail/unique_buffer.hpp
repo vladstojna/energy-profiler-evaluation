@@ -154,6 +154,11 @@ namespace util
             using iterator = iterator_impl<false>;
             using const_iterator = iterator_impl<true>;
 
+            unique_buffer() noexcept :
+                _data(),
+                _size{}
+            {}
+
             unique_buffer(pointer p, size_type size) noexcept :
                 _data(p),
                 _size(size)

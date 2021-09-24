@@ -125,6 +125,8 @@ namespace util
         using inherited::cbegin;
         using inherited::cend;
 
+        host_buffer() noexcept = default;
+
         explicit host_buffer(size_type size) :
             inherited(size)
         {}
@@ -164,6 +166,8 @@ namespace util
         using inherited::get;
         using inherited::size;
         using inherited::operator bool;
+
+        device_buffer() noexcept = default;
 
         explicit device_buffer(size_type size) :
             inherited(device_alloc<value_type>(size), size)

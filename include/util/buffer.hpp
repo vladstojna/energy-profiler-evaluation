@@ -31,6 +31,8 @@ namespace util
         using inherited::cbegin;
         using inherited::cend;
 
+        buffer() noexcept = default;
+
         explicit buffer(size_type size) :
             inherited(new value_type[size], size)
         {}
