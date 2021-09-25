@@ -45,9 +45,9 @@ namespace util
     namespace detail
     {
         template<typename InputIt>
-        using is_input_iterator = std::is_convertible<
+        using is_random_access_iterator = std::is_convertible<
             typename std::iterator_traits<InputIt>::iterator_category,
-            std::input_iterator_tag>;
+            std::random_access_iterator_tag>;
 
         template<typename InputIt, typename T>
         using is_iterator_same_no_cv =
@@ -55,7 +55,9 @@ namespace util
 
         template<typename InputIt, typename T>
         using is_iterator_compatible =
-            std::conjunction<is_input_iterator<InputIt>, is_iterator_same_no_cv<InputIt, T>>;
+            std::conjunction<
+            is_random_access_iterator<InputIt>,
+            is_iterator_same_no_cv<InputIt, T>>;
 
         template<auto func>
         struct as_lambda : std::integral_constant<decltype(func), func>
@@ -128,7 +130,7 @@ namespace util
         device_buffer(const device_buffer& other) :
             device_buffer(other.size())
         {
-            copy(other, *this);
+            copy(other, size(), *this);
         }
 
         device_buffer& operator=(const device_buffer& other)
@@ -144,23 +146,11 @@ namespace util
             copy(start, end, *this);
         }
 
-        template<typename InputIt,
-            typename = std::enable_if_t<detail::is_iterator_compatible<InputIt, value_type>::value>
-        > device_buffer(InputIt start, size_type count) :
-            device_buffer(start, std::advance(start, count))
-        {}
-
         ~device_buffer() = default;
     };
 
     template<typename Iter>
     device_buffer(Iter, Iter)->device_buffer<typename std::iterator_traits<Iter>::value_type>;
-
-    template<typename Iter>
-    device_buffer(
-        Iter,
-        typename device_buffer<typename std::iterator_traits<Iter>::value_type>::size_type
-    )->device_buffer<typename std::iterator_traits<Iter>::value_type>;
 
     template<typename InputIt, typename T,
         typename = std::enable_if_t<detail::is_iterator_compatible<InputIt, T>::value>
@@ -173,31 +163,18 @@ namespace util
         typename = std::enable_if_t<detail::is_iterator_compatible<InputIt, T>::value>
     > void copy(
         const device_buffer<T>& from,
-        InputIt into,
-        typename device_buffer<T>::size_type count)
+        typename device_buffer<T>::size_type count,
+        InputIt into)
     {
         copy_impl(&*into, from.get(), count, detail::device_to_host{});
-    }
-
-    template<typename InputIt, typename T,
-        typename = std::enable_if_t<detail::is_iterator_compatible<InputIt, T>::value>
-    > void copy(const device_buffer<T>& from, InputIt into)
-    {
-        copy(from, into, from.size());
     }
 
     template<typename T>
     void copy(
         const device_buffer<T>& from,
-        device_buffer<T>& into,
-        typename device_buffer<T>::size_type count)
+        typename device_buffer<T>::size_type count,
+        device_buffer<T>& into)
     {
         copy_impl(into.get(), from.get(), count, detail::device_to_device{});
-    }
-
-    template<typename T>
-    void copy(const device_buffer<T>& from, device_buffer<T>& into)
-    {
-        copy(from, into, from.size());
     }
 }
