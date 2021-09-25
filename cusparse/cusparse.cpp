@@ -134,11 +134,11 @@ namespace
             func_obj<cusparse_csr_destroy>
         >;
 
-        util::host_buffer<std::int32_t>
+        util::buffer<std::int32_t>
             get_coo_rows(std::int32_t M, std::int32_t N, std::size_t NNZ, std::mt19937_64& engine)
         {
             std::uniform_int_distribution<decltype(M)> dist{ 0, M - 1 };
-            util::host_buffer<std::int32_t> indices{ NNZ };
+            util::buffer<std::int32_t> indices{ NNZ };
 
             // generate random numbers but ensure
             // that there are no more than N equal values
@@ -171,14 +171,14 @@ namespace
             return indices;
         }
 
-        util::host_buffer<std::int32_t> get_coo_cols(
+        util::buffer<std::int32_t> get_coo_cols(
             std::int32_t N,
             std::mt19937_64& engine,
-            const util::host_buffer<std::int32_t>& coo_rows)
+            const util::buffer<std::int32_t>& coo_rows)
         {
             assert(coo_rows.size());
             std::uniform_int_distribution<decltype(N)> dist{ 0, N - 1 };
-            util::host_buffer<std::int32_t> indices{ coo_rows.size() };
+            util::buffer<std::int32_t> indices{ coo_rows.size() };
 
             // sort the column indices for each row
             // assume coo_rows is already sorted
@@ -230,10 +230,10 @@ namespace
 
         void coo2csr(
             cusparse_handle& handle,
-            const util::host_buffer<std::int32_t>& coo,
+            const util::buffer<std::int32_t>& coo,
             util::device_buffer<std::int32_t>& csr)
         {
-            const util::device_buffer<std::int32_t> dcoo{ coo };
+            const util::device_buffer<std::int32_t> dcoo{ coo.begin(), coo.end() };
             auto status = cusparseXcoo2csr(
                 handle,
                 dcoo.get(),
@@ -247,7 +247,7 @@ namespace
         }
 
         template<typename Real>
-        typename util::host_buffer<Real>::size_type spgemm_impl(
+        typename util::buffer<Real>::size_type spgemm_impl(
             std::int32_t M,
             std::int32_t N,
             std::int32_t K,
@@ -265,26 +265,27 @@ namespace
             static constexpr const auto dtype = cuda_data_type<Real>::value;
 
             tp::sampler smp(g_tpr);
-            util::host_buffer<Real> a_values{ A_nnz };
-            util::host_buffer<Real> b_values{ B_nnz };
+            util::buffer<Real> a_values{ A_nnz };
+            util::buffer<Real> b_values{ B_nnz };
             std::generate(a_values.begin(), a_values.end(), gen);
             std::generate(b_values.begin(), b_values.end(), gen);
 
-            util::host_buffer<std::int32_t> a_coo_rows = get_coo_rows(M, K, A_nnz, engine);
-            util::host_buffer<std::int32_t> a_coo_cols = get_coo_cols(K, engine, a_coo_rows);
-            util::host_buffer<std::int32_t> b_coo_rows = get_coo_rows(K, N, B_nnz, engine);
-            util::host_buffer<std::int32_t> b_coo_cols = get_coo_cols(N, engine, b_coo_rows);
+            util::buffer<std::int32_t> a_coo_rows = get_coo_rows(M, K, A_nnz, engine);
+            util::buffer<std::int32_t> a_coo_cols = get_coo_cols(K, engine, a_coo_rows);
+            util::buffer<std::int32_t> b_coo_rows = get_coo_rows(K, N, B_nnz, engine);
+            util::buffer<std::int32_t> b_coo_cols = get_coo_cols(N, engine, b_coo_rows);
+            util::buffer<std::int32_t> c_csr_rows{ static_cast<std::size_t>(M) + 1 };
 
             smp.do_sample();
 
-            util::device_buffer da_values{ a_values };
-            util::device_buffer da_coo_cols{ a_coo_cols };
-            util::device_buffer db_values{ b_values };
-            util::device_buffer db_coo_cols{ b_coo_cols };
+            util::device_buffer da_values{ a_values.begin(), a_values.end() };
+            util::device_buffer da_coo_cols{ a_coo_cols.begin(), a_coo_cols.end() };
+            util::device_buffer db_values{ b_values.begin(), b_values.end() };
+            util::device_buffer db_coo_cols{ b_coo_cols.begin(), b_coo_cols.end() };
 
             util::device_buffer<std::int32_t> da_csr_rows{ static_cast<std::size_t>(M) + 1 };
             util::device_buffer<std::int32_t> db_csr_rows{ static_cast<std::size_t>(K) + 1 };
-            util::device_buffer<std::int32_t> dc_csr_rows{ static_cast<std::size_t>(M) + 1 };
+            util::device_buffer<std::int32_t> dc_csr_rows{ c_csr_rows.size() };
 
             coo2csr(handle, a_coo_rows, da_csr_rows);
             coo2csr(handle, b_coo_rows, db_csr_rows);
@@ -378,6 +379,8 @@ namespace
             }
             util::device_buffer<Real> dc_values{ static_cast<std::size_t>(C_nnz) };
             util::device_buffer<std::int32_t> dc_coo_cols{ static_cast<std::size_t>(C_nnz) };
+            util::buffer<std::int32_t> c_coo_cols{ dc_coo_cols.size() };
+            util::buffer<Real> c_values{ dc_values.size() };
             status = cusparseCsrSetPointers(
                 C, dc_csr_rows.get(), dc_coo_cols.get(), dc_values.get());
             if (status != CUSPARSE_STATUS_SUCCESS)
@@ -392,9 +395,9 @@ namespace
                 alg,
                 spgemm_desc);
 
-            util::host_buffer c_values{ dc_values };
-            util::host_buffer c_csr_rows{ dc_csr_rows };
-            util::host_buffer c_coo_cols{ dc_coo_cols };
+            util::copy(dc_values, dc_values.size(), c_values.begin());
+            util::copy(dc_csr_rows, dc_csr_rows.size(), c_csr_rows.begin());
+            util::copy(dc_coo_cols, dc_coo_cols.size(), c_coo_cols.begin());
             return c_values.size();
         }
     }
