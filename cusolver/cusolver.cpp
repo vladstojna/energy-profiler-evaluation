@@ -118,6 +118,70 @@ namespace
             util::copy(dev_info, &info, 1);
             return info;
         }
+
+        template<typename Real>
+        int getrf_impl(
+            cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::buffer<Real> a{ M * N };
+            util::buffer<std::int64_t> ipiv{ std::min(M, N) };
+            std::generate(a.begin(), a.end(), gen);
+
+            smp.do_sample();
+
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+            util::device_buffer<int> dev_info{ 1 };
+            if (auto status = cudaMemset(dev_info.get(), 0, sizeof(decltype(dev_info)::value_type));
+                status != cudaSuccess)
+            {
+                throw util::device_exception(util::get_cuda_error_str("cudaMemset", status));
+            }
+
+            smp.do_sample();
+
+            std::size_t workspace_device;
+            std::size_t workspace_host;
+            auto status = cusolverDnXgetrf_bufferSize(handle, nullptr, M, N,
+                cuda_data_type<Real>::value,
+                dev_a.get(), M,
+                cuda_data_type<Real>::value,
+                &workspace_device,
+                &workspace_host);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                throw std::runtime_error("cusolverDnXgetrf_bufferSize error");
+
+            smp.do_sample();
+
+            util::device_buffer<std::uint8_t> dev_work{ workspace_device };
+            util::buffer<std::uint8_t> host_work;
+            if (workspace_host)
+                host_work = util::buffer<std::uint8_t>{ workspace_host };
+
+            status = cusolverDnXgetrf(handle, nullptr, M, N,
+                cuda_data_type<Real>::value,
+                dev_a.get(), M,
+                dev_ipiv.get(),
+                cuda_data_type<Real>::value,
+                dev_work.get(), workspace_device,
+                host_work.get(), workspace_host,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                throw std::runtime_error("cusolverDnXgetrf error");
+
+            smp.do_sample();
+
+            util::copy(dev_a, a.begin(), a.size());
+            util::copy(dev_ipiv, ipiv.begin(), ipiv.size());
+            util::copy(dev_info, &info, 1);
+            return info;
+        }
     }
 
     __attribute__((noinline))
@@ -132,52 +196,98 @@ namespace
         return detail::trtri_impl<float>(handle, N, engine);
     }
 
+    __attribute__((noinline))
+        int dgetrf(cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+    {
+        return detail::getrf_impl<double>(handle, M, N, engine);
+    }
+
+    __attribute__((noinline))
+        int sgetrf(cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+    {
+        return detail::getrf_impl<float>(handle, M, N, engine);
+    }
+
     namespace work_type
     {
         enum type
         {
             dtrtri,
-            strtri
+            strtri,
+            dgetrf,
+            sgetrf,
         };
     };
 
     struct cmdargs
     {
+        std::size_t m = 0;
         std::size_t n = 0;
         work_type::type wtype = static_cast<work_type::type>(0);
 
         cmdargs(int argc, const char* const* argv)
         {
-            if (argc < 3)
+            const char* prog = argv[0];
+            if (argc < 2)
             {
-                usage(argv[0]);
+                usage(prog);
                 throw std::invalid_argument("Not enough arguments");
             }
-            wtype = get_work_type(argv[1]);
-            util::to_scalar(argv[2], n);
-            if (n == 0)
-                throw std::invalid_argument("n must be a positive integer");
-            assert(n > 0);
+            std::string op_type(argv[1]);
+            std::transform(op_type.begin(), op_type.end(), op_type.begin(),
+                [](unsigned char c) { return std::tolower(c); });
+            wtype = get_work_type(op_type);
             assert(wtype);
+
+            if (wtype == work_type::dgetrf || wtype == work_type::sgetrf)
+            {
+                if (argc < 4)
+                    throw_too_few(prog, op_type);
+                util::to_scalar(argv[2], m);
+                if (m == 0)
+                    throw std::invalid_argument("m must be a positive integer");
+                util::to_scalar(argv[3], n);
+                if (n == 0)
+                    throw std::invalid_argument("n must be a positive integer");
+                assert(m > 0);
+                assert(n > 0);
+            }
+            else if (wtype == work_type::dtrtri || wtype == work_type::strtri)
+            {
+                if (argc < 3)
+                    throw_too_few(prog, op_type);
+                util::to_scalar(argv[2], n);
+                if (n == 0)
+                    throw std::invalid_argument("n must be a positive integer");
+                assert(n > 0);
+            }
         }
 
     private:
-        static work_type::type get_work_type(const char* str)
+        static void throw_too_few(const char* prog, std::string& op_type)
         {
-            std::string op_type(str);
-            std::transform(op_type.begin(), op_type.end(), op_type.begin(),
-                [](unsigned char c) { return std::tolower(c); });
+            usage(prog);
+            throw std::invalid_argument(op_type.append(": too few arguments"));
+        }
 
-            if (op_type == "dtrtri")
-                return work_type::dtrtri;
-            if (op_type == "strtri")
-                return work_type::strtri;
+        static work_type::type get_work_type(const std::string& op_type)
+        {
+        #define WORK_RETURN_IF(op_type, arg) \
+            if (op_type == #arg) \
+                return work_type::arg
+
+            WORK_RETURN_IF(op_type, dtrtri);
+            WORK_RETURN_IF(op_type, strtri);
+            WORK_RETURN_IF(op_type, dgetrf);
+            WORK_RETURN_IF(op_type, sgetrf);
             throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
         }
 
         static void usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " {dtrtri,strtri} <n>\n";
+            std::cerr << "Usage:\n"
+                << "\t" << prog << " {dtrtri,strtri} <n>\n"
+                << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
 
@@ -191,6 +301,12 @@ namespace
         case work_type::strtri:
             std::cerr << "strtri N=" << args.n << "\n";
             return strtri(handle, args.n, gen);
+        case work_type::dgetrf:
+            std::cerr << "dgetrf M=" << args.m << ", N=" << args.n << "\n";
+            return dgetrf(handle, args.m, args.n, gen);
+        case work_type::sgetrf:
+            std::cerr << "sgetrf M=" << args.m << ", N=" << args.n << "\n";
+            return sgetrf(handle, args.m, args.n, gen);
         }
         throw std::runtime_error("Invalid work type");
     }
