@@ -88,12 +88,12 @@ namespace
 
     template<typename RealType>
     __attribute__((noinline))
-        typename util::host_buffer<RealType>::size_type
+        typename util::buffer<RealType>::size_type
         generate_host(std::size_t count, std::vector<std::mt19937>& engines)
     {
         assert(count > 0);
         tp::sampler smp(g_tpr);
-        util::host_buffer<RealType> host_buff{ count };
+        util::buffer<RealType> host_buff{ count };
         smp.do_sample();
     #pragma omp parallel
         {
@@ -108,7 +108,7 @@ namespace
 
     template<typename RealType>
     __attribute__((noinline))
-        typename util::host_buffer<RealType>::size_type
+        typename util::device_buffer<RealType>::size_type
         generate_device(std::size_t count, curandGenerator_t gen)
     {
         assert(count > 0);
