@@ -7,6 +7,7 @@
 #include <cuda_runtime_api.h>
 #include <cusolverDn.h>
 
+#include <cassert>
 #include <random>
 
 namespace
@@ -118,22 +119,102 @@ namespace
             return info;
         }
     }
+
+    __attribute__((noinline))
+        int dtrtri(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    {
+        return detail::trtri_impl<double>(handle, N, engine);
+    }
+
+    __attribute__((noinline))
+        int strtri(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    {
+        return detail::trtri_impl<float>(handle, N, engine);
+    }
+
+    namespace work_type
+    {
+        enum type
+        {
+            dtrtri,
+            strtri
+        };
+    };
+
+    struct cmdargs
+    {
+        std::size_t n = 0;
+        work_type::type wtype = static_cast<work_type::type>(0);
+
+        cmdargs(int argc, const char* const* argv)
+        {
+            if (argc < 3)
+            {
+                usage(argv[0]);
+                throw std::invalid_argument("Not enough arguments");
+            }
+            wtype = get_work_type(argv[1]);
+            util::to_scalar(argv[2], n);
+            if (n == 0)
+                throw std::invalid_argument("n must be a positive integer");
+            assert(n > 0);
+            assert(wtype);
+        }
+
+    private:
+        static work_type::type get_work_type(const char* str)
+        {
+            std::string op_type(str);
+            std::transform(op_type.begin(), op_type.end(), op_type.begin(),
+                [](unsigned char c) { return std::tolower(c); });
+
+            if (op_type == "dtrtri")
+                return work_type::dtrtri;
+            if (op_type == "strtri")
+                return work_type::strtri;
+            throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
+        }
+
+        static void usage(const char* prog)
+        {
+            std::cerr << "Usage: " << prog << " {dtrtri,strtri} <n>\n";
+        }
+    };
+
+    int execute_work(const cmdargs& args, cusolverdn_handle& handle, std::mt19937_64& gen)
+    {
+        switch (args.wtype)
+        {
+        case work_type::dtrtri:
+            std::cerr << "dtrtri N=" << args.n << "\n";
+            return dtrtri(handle, args.n, gen);
+        case work_type::strtri:
+            std::cerr << "strtri N=" << args.n << "\n";
+            return strtri(handle, args.n, gen);
+        }
+        throw std::runtime_error("Invalid work type");
+    }
+
+    void handle_info(int info)
+    {
+        if (info == 0)
+            std::cerr << "Success, info = " << info << "\n";
+        else if (info > 0)
+            std::cerr << "Solution not found, info = " << info << "\n";
+        else
+            std::cerr << "Invalid parameter, info = " << info << "\n";
+    }
 }
 
 int main(int argc, char** argv)
 {
     try
     {
+        const cmdargs args(argc, argv);
         std::random_device rnd_dev;
         std::mt19937_64 engine{ rnd_dev() };
         cusolverdn_handle handle{ cusolverdn_create() };
-        int info = detail::trtri_impl<double>(handle, 24000, engine);
-        if (info == 0)
-            std::cerr << "Inversion successful\n";
-        else if (info > 0)
-            std::cerr << "Could not invert matrix: A(" << info << "," << info << ") is zero\n";
-        else
-            std::cerr << "Invalid parameter " << -info << "\n";
+        handle_info(execute_work(args, handle, engine));
     }
     catch (const std::exception& e)
     {
