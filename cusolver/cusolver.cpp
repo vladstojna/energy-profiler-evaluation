@@ -114,8 +114,8 @@ namespace
 
             smp.do_sample();
 
-            util::copy(dev_a, a.begin(), a.size());
-            util::copy(dev_info, &info, 1);
+            util::copy(dev_a, dev_a.size(), a.begin());
+            util::copy(dev_info, 1, &info);
             return info;
         }
 
@@ -177,9 +177,9 @@ namespace
 
             smp.do_sample();
 
-            util::copy(dev_a, a.begin(), a.size());
-            util::copy(dev_ipiv, ipiv.begin(), ipiv.size());
-            util::copy(dev_info, &info, 1);
+            util::copy(dev_a, dev_a.size(), a.begin());
+            util::copy(dev_ipiv, dev_ipiv.size(), ipiv.begin());
+            util::copy(dev_info, 1, &info);
             return info;
         }
     }
