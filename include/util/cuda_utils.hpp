@@ -100,57 +100,6 @@ namespace util
     }
 
     template<typename T>
-    class device_buffer;
-
-    template<typename T>
-    class host_buffer : private buffer<T>
-    {
-        using inherited = buffer<T>;
-    public:
-        using size_type = typename inherited::size_type;
-        using value_type = typename inherited::value_type;
-        using pointer = typename inherited::pointer;
-        using const_pointer = typename inherited::const_pointer;
-        using reference = typename inherited::reference;
-        using const_reference = typename inherited::const_reference;
-        using iterator = typename inherited::iterator;
-        using const_iterator = typename inherited::const_iterator;
-
-        using inherited::get;
-        using inherited::size;
-        using inherited::operator bool;
-        using inherited::operator[];
-        using inherited::begin;
-        using inherited::end;
-        using inherited::cbegin;
-        using inherited::cend;
-
-        host_buffer() noexcept = default;
-
-        explicit host_buffer(size_type size) :
-            inherited(size)
-        {}
-
-        host_buffer(device_buffer<value_type>&& other) = delete;
-        explicit host_buffer(const device_buffer<value_type>& other) :
-            host_buffer(other.size())
-        {
-            copy(other, *this);
-        }
-
-        host_buffer(inherited&& other) :
-            inherited(std::move(other))
-        {}
-
-        host_buffer(const inherited& other) :
-            inherited(other)
-        {}
-    };
-
-    template<typename T>
-    host_buffer(const device_buffer<T>&)->host_buffer<T>;
-
-    template<typename T>
     class device_buffer :
         private detail::unique_buffer<T, detail::as_lambda<device_free<T>>>
     {
@@ -201,16 +150,8 @@ namespace util
             device_buffer(start, std::advance(start, count))
         {}
 
-        device_buffer(host_buffer<value_type>&& other) = delete;
-        explicit device_buffer(const host_buffer<value_type>& other) :
-            device_buffer(other.begin(), other.end())
-        {}
-
         ~device_buffer() = default;
     };
-
-    template<typename T>
-    device_buffer(const host_buffer<T>&)->device_buffer<T>;
 
     template<typename Iter>
     device_buffer(Iter, Iter)->device_buffer<typename std::iterator_traits<Iter>::value_type>;
@@ -228,12 +169,6 @@ namespace util
         copy_impl(into.get(), &*start, std::distance(start, end), detail::host_to_device{});
     }
 
-    template<typename T>
-    void copy(const host_buffer<T>& from, device_buffer<T>& into)
-    {
-        copy(from.begin(), from.end(), into);
-    }
-
     template<typename InputIt, typename T,
         typename = std::enable_if_t<detail::is_iterator_compatible<InputIt, T>::value>
     > void copy(
@@ -249,21 +184,6 @@ namespace util
     > void copy(const device_buffer<T>& from, InputIt into)
     {
         copy(from, into, from.size());
-    }
-
-    template<typename T>
-    void copy(
-        const device_buffer<T>& from,
-        host_buffer<T>& into,
-        typename device_buffer<T>::size_type count)
-    {
-        copy(from, into.begin(), count);
-    }
-
-    template<typename T>
-    void copy(const device_buffer<T>& from, host_buffer<T>& into)
-    {
-        copy(from, into.begin(), from.size());
     }
 
     template<typename T>
