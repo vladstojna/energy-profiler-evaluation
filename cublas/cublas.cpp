@@ -78,15 +78,15 @@ namespace
             tp::sampler smp(g_tpr);
             Real alpha = 1.0;
             Real beta = 0.0;
-            util::host_buffer<Real> a{ M * K };
-            util::host_buffer<Real> b{ K * N };
-            util::host_buffer<Real> c{ M * N };
+            util::buffer<Real> a{ M * K };
+            util::buffer<Real> b{ K * N };
+            util::buffer<Real> c{ M * N };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            util::device_buffer dev_a{ a };
-            util::device_buffer dev_b{ b };
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            util::device_buffer dev_b{ b.begin(), b.end() };
             util::device_buffer<Real> dev_c{ c.size() };
 
             smp.do_sample();
@@ -103,9 +103,9 @@ namespace
             cudaDeviceSynchronize();
 
             smp.do_sample();
-            util::copy(dev_a, a);
-            util::copy(dev_b, b);
-            util::copy(dev_c, c);
+            util::copy(dev_a, dev_a.size(), a.begin());
+            util::copy(dev_b, dev_b.size(), b.begin());
+            util::copy(dev_c, dev_c.size(), c.begin());
         }
     }
 
