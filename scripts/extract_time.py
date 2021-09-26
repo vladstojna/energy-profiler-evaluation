@@ -95,7 +95,7 @@ def main():
                 yield row
 
     parser = argparse.ArgumentParser(
-        description="Extract first timestamp from timeprinter output"
+        description="Extract a timestamp from timeprinter output"
     )
     args = add_arguments(parser).parse_args()
     with read_from(args.source_file) as f:
