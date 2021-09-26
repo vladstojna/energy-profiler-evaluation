@@ -103,8 +103,6 @@ namespace
             cudaDeviceSynchronize();
 
             smp.do_sample();
-            util::copy(dev_a, dev_a.size(), a.begin());
-            util::copy(dev_b, dev_b.size(), b.begin());
             util::copy(dev_c, dev_c.size(), c.begin());
         }
     }
