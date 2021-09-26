@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <charconv>
 #include <random>
 #include <vector>
 
@@ -33,22 +32,22 @@ namespace
         template<auto Func>
         struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
-    #define DECLARE_CALLER(prefix) \
-        template<typename T> \
+    #define DEFINE_CALLER(prefix) \
+        template<typename> \
         struct prefix ## _caller {}; \
         template<> \
-        struct prefix ## _caller<float> : func_obj<LAPACKE_s ## prefix> {}; \
+        struct prefix ## _caller<float> : func_obj<LAPACKE_s ## prefix ## _work> {}; \
         template<> \
-        struct prefix ## _caller<double> : func_obj<LAPACKE_d ## prefix> {}
+        struct prefix ## _caller<double> : func_obj<LAPACKE_d ## prefix ## _work> {}
 
-        DECLARE_CALLER(gesv);
-        DECLARE_CALLER(gels);
-        DECLARE_CALLER(getri);
-        DECLARE_CALLER(getrf);
-        DECLARE_CALLER(tptri);
-        DECLARE_CALLER(trtri);
+        DEFINE_CALLER(gesv);
+        DEFINE_CALLER(gels);
+        DEFINE_CALLER(getri);
+        DEFINE_CALLER(getrf);
+        DEFINE_CALLER(tptri);
+        DEFINE_CALLER(trtri);
 
-        template<typename Real, auto Func = gesv_caller<Real>::value>
+        template<typename Real>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -63,11 +62,12 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = Func(LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
+            int res = gesv_caller<Real>::value(
+                LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
             handle_error(res);
         }
 
-        template<typename Real, auto Func = gels_caller<Real>::value>
+        template<typename Real>
         void gels_impl(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -81,14 +81,20 @@ namespace
             std::generate(b.begin(), b.end(), gen);
 
             smp.do_sample();
-            int res = Func(LAPACK_ROW_MAJOR, 'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs);
+            Real workspace_query;
+            int res = gels_caller<Real>::value(LAPACK_ROW_MAJOR,
+                'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs, &workspace_query, -1);
+            handle_error(res);
+
+            smp.do_sample();
+            std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
+            res = gels_caller<Real>::value(LAPACK_ROW_MAJOR,
+                'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs, work.data(), work.size());
             handle_error(res);
         }
 
-        template<typename Real,
-            auto Ffact = getrf_caller<Real>::value,
-            auto Finv = getri_caller<Real>::value
-        > void getri_impl(std::size_t N, std::mt19937_64& engine)
+        template<typename Real>
+        void getri_impl(std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -99,15 +105,24 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = Ffact(LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
+            int res = getrf_caller<Real>::value(
+                LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
             handle_error(res);
 
             smp.do_sample();
-            res = Finv(LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data());
+            Real workspace_query;
+            res = getri_caller<Real>::value(LAPACK_ROW_MAJOR,
+                N, a.data(), N, ipiv.data(), &workspace_query, -1);
+            handle_error(res);
+
+            smp.do_sample();
+            std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
+            res = getri_caller<Real>::value(
+                LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data(), work.data(), work.size());
             handle_error(res);
         }
 
-        template<typename Real, auto Func = getrf_caller<Real>::value>
+        template<typename Real>
         void getrf_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -119,11 +134,12 @@ namespace
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
-            int res = Func(LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+            int res = getrf_caller<Real>::value(
+                LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
             handle_error(res);
         }
 
-        template<typename Real, auto Func = tptri_caller<Real>::value>
+        template<typename Real>
         void tptri_impl(std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
@@ -134,11 +150,12 @@ namespace
             std::generate(a_packed.begin(), a_packed.end(), gen);
 
             smp.do_sample();
-            int res = Func(LAPACK_ROW_MAJOR, 'L', 'N', N, a_packed.data());
+            int res = tptri_caller<Real>::value(
+                LAPACK_ROW_MAJOR, 'L', 'N', N, a_packed.data());
             handle_error(res);
         }
 
-        template<typename Real, auto Func = trtri_caller<Real>::value>
+        template<typename Real>
         void trtri_impl(std::size_t N, std::mt19937_64& engine)
         {
             static auto fill_lower_triangular = [](auto from, auto to, std::size_t ld, auto gen)
@@ -156,7 +173,8 @@ namespace
             fill_lower_triangular(a.begin(), a.end(), N, gen);
 
             smp.do_sample();
-            int res = Func(LAPACK_ROW_MAJOR, 'L', 'N', N, a.data(), N);
+            int res = trtri_caller<Real>::value(
+                LAPACK_ROW_MAJOR, 'L', 'N', N, a.data(), N);
             handle_error(res);
         }
     }
