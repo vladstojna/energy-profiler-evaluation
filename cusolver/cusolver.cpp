@@ -74,14 +74,20 @@ namespace
             std::integral_constant<decltype(CUDA_R_64F), CUDA_R_64F>
         {};
 
+        void cusolver_error(const char* func, cusolverStatus_t status)
+        {
+            throw std::runtime_error(std::string(func)
+                .append(" error, status = ").append(std::to_string(status)));
+        }
+
         template<typename Real>
         int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
         {
-            static constexpr const cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
-            static constexpr const cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+            constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
 
             // upper triangular in column-major is lower triangular in row-major
-            static auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
             {
                 for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
                     for (auto entry = it; entry < it + nnz; entry++)
@@ -117,7 +123,7 @@ namespace
                 dev_a.get(), N,
                 &workspace_device, &workspace_host);
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error("cusolverDnXtrtri_bufferSize error");
+                cusolver_error("cusolverDnXtrtri_bufferSize", status);
 
             smp.do_sample();
 
@@ -133,7 +139,7 @@ namespace
                 host_work.get(), workspace_host,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error("cusolverDnXtrtri_bufferSize error");
+                cusolver_error("cusolverDnXtrtri", status);
             cudaDeviceSynchronize();
 
             smp.do_sample();
@@ -164,7 +170,7 @@ namespace
                 &workspace_device,
                 &workspace_host);
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error("cusolverDnXgetrf_bufferSize error");
+                cusolver_error("cusolverDnXgetrf_bufferSize", status);
 
             smp.do_sample();
 
@@ -182,7 +188,7 @@ namespace
                 host_work.get(), workspace_host,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error("cusolverDnXgetrf error");
+                cusolver_error("cusolverDnXgetrf", status);
 
             util::copy(dev_info, 1, &info);
             return info;
@@ -197,7 +203,7 @@ namespace
             const util::device_buffer<std::int64_t>& ipiv,
             util::device_buffer<Real>& b)
         {
-            static constexpr cublasOperation_t op = CUBLAS_OP_N;
+            constexpr cublasOperation_t op = CUBLAS_OP_N;
             tp::sampler smp(g_tpr);
 
             int info = 0;
@@ -211,7 +217,7 @@ namespace
                 b.get(), N,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error("cusolverDnXgetrs error");
+                cusolver_error("cusolverDnXgetrs", status);
 
             util::copy(dev_info, 1, &info);
             return info;
@@ -280,6 +286,8 @@ namespace
         int gesv_impl(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
+            using call = gesv_call<Real>;
+
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
@@ -302,11 +310,10 @@ namespace
             smp.do_sample();
 
             std::size_t work_bytes;
-            auto status = gesv_call<Real>::query(handle, N, Nrhs,
+            auto status = call::query(handle, N, Nrhs,
                 nullptr, N, nullptr, nullptr, N, nullptr, N, nullptr, &work_bytes);
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error(std::string(gesv_call<Real>::query_str)
-                    .append(" error"));
+                cusolver_error(call::query_str, status);
 
             smp.do_sample();
 
@@ -315,7 +322,7 @@ namespace
             util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
             util::device_buffer<std::uint8_t> dev_work{ work_bytes };
 
-            status = gesv_call<Real>::compute(handle, N, Nrhs,
+            status = call::compute(handle, N, Nrhs,
                 dev_a.get(), N,
                 dev_ipiv.get(),
                 dev_b.get(), N,
@@ -324,8 +331,7 @@ namespace
                 &iters,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error(std::string(gesv_call<Real>::compute_str)
-                    .append(" error"));
+                cusolver_error(call::compute_str, status);
 
             smp.do_sample();
 
@@ -342,7 +348,7 @@ namespace
             cusolverdn_handle& handle, std::size_t M, std::size_t N,
             std::size_t Nrhs, std::mt19937_64& engine)
         {
-            using calls = gels_call<Real>;
+            using call = gels_call<Real>;
 
             assert(N <= M);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
@@ -365,10 +371,10 @@ namespace
             smp.do_sample();
 
             std::size_t work_bytes;
-            auto status = calls::query(handle, M, N, Nrhs,
+            auto status = call::query(handle, M, N, Nrhs,
                 nullptr, M, nullptr, M, nullptr, N, nullptr, &work_bytes);
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error(std::string(calls::query_str).append(" error"));
+                cusolver_error(call::query_str, status);
 
             smp.do_sample();
 
@@ -377,7 +383,7 @@ namespace
             util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
             util::device_buffer<std::uint8_t> dev_work{ work_bytes };
 
-            status = calls::compute(handle, M, N, Nrhs,
+            status = call::compute(handle, M, N, Nrhs,
                 dev_a.get(), M,
                 dev_b.get(), M,
                 dev_x.get(), N,
@@ -385,7 +391,7 @@ namespace
                 &iters,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
-                throw std::runtime_error(std::string(calls::compute_str).append(" error"));
+                cusolver_error(call::compute_str, status);
 
             smp.do_sample();
 
@@ -508,13 +514,9 @@ namespace
                 if (argc < 4)
                     throw_too_few(prog, op_type);
                 util::to_scalar(argv[2], m);
-                if (m == 0)
-                    throw std::invalid_argument("m must be a positive integer");
+                check_positive(m, "m");
                 util::to_scalar(argv[3], n);
-                if (n == 0)
-                    throw std::invalid_argument("n must be a positive integer");
-                assert(m > 0);
-                assert(n > 0);
+                check_positive(n, "n");
             }
             else if (wtype == work_type::dgetrs || wtype == work_type::sgetrs ||
                 wtype == work_type::dgesv || wtype == work_type::sgesv)
@@ -522,45 +524,41 @@ namespace
                 if (argc < 4)
                     throw_too_few(prog, op_type);
                 util::to_scalar(argv[2], n);
-                if (n == 0)
-                    throw std::invalid_argument("n must be a positive integer");
+                check_positive(n, "n");
                 util::to_scalar(argv[3], nrhs);
-                if (nrhs == 0)
-                    throw std::invalid_argument("n_rhs must be a positive integer");
-                assert(n > 0);
-                assert(nrhs > 0);
+                check_positive(nrhs, "n_rhs");
             }
             else if (wtype == work_type::dgels || wtype == work_type::sgels)
             {
                 if (argc < 5)
                     throw_too_few(prog, op_type);
                 util::to_scalar(argv[2], m);
-                if (m == 0)
-                    throw std::invalid_argument("m must be a positive integer");
+                check_positive(m, "m");
                 util::to_scalar(argv[3], n);
-                if (n == 0)
-                    throw std::invalid_argument("n must be a positive integer");
+                check_positive(n, "n");
                 util::to_scalar(argv[4], nrhs);
-                if (nrhs == 0)
-                    throw std::invalid_argument("n_rhs must be a positive integer");
+                check_positive(nrhs, "n_rhs");
                 if (n > m)
                     throw std::invalid_argument("n must not be greater than m");
-                assert(m > 0);
-                assert(n > 0);
-                assert(nrhs > 0);
             }
             else if (wtype == work_type::dtrtri || wtype == work_type::strtri)
             {
                 if (argc < 3)
                     throw_too_few(prog, op_type);
                 util::to_scalar(argv[2], n);
-                if (n == 0)
-                    throw std::invalid_argument("n must be a positive integer");
-                assert(n > 0);
+                check_positive(n, "n");
             }
         }
 
     private:
+        static void check_positive(std::size_t val, const char* val_str)
+        {
+            if (!val)
+                throw std::invalid_argument(std::string(val_str)
+                    .append(" must be a positive integer"));
+            assert(val);
+        }
+
         static void throw_too_few(const char* prog, std::string& op_type)
         {
             usage(prog);
