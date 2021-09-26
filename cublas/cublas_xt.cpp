@@ -58,7 +58,7 @@ namespace
             }
         }
 
-        template<typename Real, auto Func = gemm_caller<Real>::value>
+        template<typename Real>
         void gemm_impl(
             std::size_t M,
             std::size_t N,
@@ -80,7 +80,7 @@ namespace
             Real beta = 0.0;
 
             smp.do_sample();
-            cublasStatus_t res = Func(
+            cublasStatus_t res = gemm_caller<Real>::value(
                 handle,
                 CUBLAS_OP_N,
                 CUBLAS_OP_N,

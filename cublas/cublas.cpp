@@ -64,7 +64,7 @@ namespace
             }
         }
 
-        template<typename Real, auto Func = gemm_caller<Real>::value>
+        template<typename Real>
         void gemm_impl(
             std::size_t M,
             std::size_t N,
@@ -90,7 +90,7 @@ namespace
             util::device_buffer<Real> dev_c{ c.size() };
 
             smp.do_sample();
-            auto res = Func(
+            auto res = gemm_caller<Real>::value(
                 handle,
                 CUBLAS_OP_N,
                 CUBLAS_OP_N,
