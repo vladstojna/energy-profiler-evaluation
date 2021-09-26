@@ -38,6 +38,28 @@ namespace
 
     namespace detail
     {
+    #define DEFINE_CALL_MEMBERS(prefix, prec) \
+        static constexpr auto query = cusolverDn ## prec ## prefix ## _bufferSize; \
+        static constexpr const char query_str[] = "cusolverDn" #prec #prefix "_bufferSize"; \
+        static constexpr auto compute = cusolverDn ## prec ## prefix; \
+        static constexpr const char compute_str[] = "cusolverDn" #prec #prefix
+
+    #define DEFINE_CALL(prefix) \
+        template<typename> \
+        struct prefix ## _call {}; \
+        template<> \
+        struct prefix ## _call<float> \
+        { \
+            DEFINE_CALL_MEMBERS(prefix, SS); \
+        }; \
+        template<> \
+        struct prefix ## _call<double> \
+        { \
+            DEFINE_CALL_MEMBERS(prefix, DD); \
+        }
+
+        DEFINE_CALL(gesv);
+
         template<typename>
         struct cuda_data_type {};
 
@@ -252,6 +274,67 @@ namespace
             util::copy(dev_b, dev_b.size(), b.begin());
             return info;
         }
+
+        template<typename Real>
+        int gesv_impl(
+            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+
+            util::buffer<Real> a{ N * N };
+            util::buffer<Real> b{ N * Nrhs };
+            util::buffer<Real> x{ N * Nrhs };
+            util::buffer<cusolver_int_t> ipiv{ N };
+            std::generate(a.begin(), a.end(), gen);
+            std::generate(b.begin(), b.end(), gen);
+
+            smp.do_sample();
+
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            util::device_buffer dev_b{ b.begin(), b.end() };
+            util::device_buffer<Real> dev_x{ x.size() };
+            util::device_buffer<cusolver_int_t> dev_ipiv{ ipiv.size() };
+
+            smp.do_sample();
+
+            std::size_t work_bytes;
+            auto status = gesv_call<Real>::query(handle, N, Nrhs,
+                nullptr, N, nullptr, nullptr, N, nullptr, N, nullptr, &work_bytes);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                throw std::runtime_error(std::string(gesv_call<Real>::query_str)
+                    .append(" error"));
+
+            smp.do_sample();
+
+            cusolver_int_t iters;
+            cusolver_int_t info = 0;
+            util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
+            util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+
+            status = gesv_call<Real>::compute(handle, N, Nrhs,
+                dev_a.get(), N,
+                dev_ipiv.get(),
+                dev_b.get(), N,
+                dev_x.get(), N,
+                dev_work.get(), work_bytes,
+                &iters,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                throw std::runtime_error(std::string(gesv_call<Real>::compute_str)
+                    .append(" error"));
+
+            smp.do_sample();
+
+            std::cerr << "iterations = " << iters << "\n";
+            util::copy(dev_info, 1, &info);
+            util::copy(dev_x, dev_x.size(), x.begin());
+            util::copy(dev_ipiv, dev_ipiv.size(), ipiv.begin());
+            util::copy(dev_a, dev_a.size(), a.begin());
+            return info;
+        }
     }
 
     __attribute__((noinline))
@@ -292,6 +375,20 @@ namespace
         return detail::getrs_impl<float>(handle, N, Nrhs, engine);
     }
 
+    __attribute__((noinline))
+        int dgesv(
+            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    {
+        return detail::gesv_impl<double>(handle, N, Nrhs, engine);
+    }
+
+    __attribute__((noinline))
+        int sgesv(
+            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    {
+        return detail::gesv_impl<float>(handle, N, Nrhs, engine);
+    }
+
     namespace work_type
     {
         enum type
@@ -302,6 +399,8 @@ namespace
             sgetrf,
             dgetrs,
             sgetrs,
+            dgesv,
+            sgesv,
         };
     };
 
@@ -339,7 +438,8 @@ namespace
                 assert(m > 0);
                 assert(n > 0);
             }
-            else if (wtype == work_type::dgetrs || wtype == work_type::sgetrs)
+            else if (wtype == work_type::dgetrs || wtype == work_type::sgetrs ||
+                wtype == work_type::dgesv || wtype == work_type::sgesv)
             {
                 if (argc < 4)
                     throw_too_few(prog, op_type);
@@ -382,6 +482,8 @@ namespace
             WORK_RETURN_IF(op_type, sgetrf);
             WORK_RETURN_IF(op_type, dgetrs);
             WORK_RETURN_IF(op_type, sgetrs);
+            WORK_RETURN_IF(op_type, dgesv);
+            WORK_RETURN_IF(op_type, sgesv);
             throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
         }
 
@@ -390,7 +492,7 @@ namespace
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dtrtri,strtri} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n"
-                << "\t" << prog << " {dgetrs,sgetrs} <n> <n_rhs>\n";
+                << "\t" << prog << " {dgetrs,sgetrs,dgesv,sgesv} <n> <n_rhs>\n";
         }
     };
 
@@ -416,6 +518,12 @@ namespace
         case work_type::sgetrs:
             std::cerr << "sgetrs N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
             return sgetrs(handle, args.n, args.nrhs, gen);
+        case work_type::dgesv:
+            std::cerr << "dgesv N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
+            return dgesv(handle, args.n, args.nrhs, gen);
+        case work_type::sgesv:
+            std::cerr << "sgesv N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
+            return sgesv(handle, args.n, args.nrhs, gen);
         }
         throw std::runtime_error("Invalid work type");
     }
