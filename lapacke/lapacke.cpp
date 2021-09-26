@@ -63,7 +63,7 @@ namespace
 
             smp.do_sample();
             int res = gesv_caller<Real>::value(
-                LAPACK_ROW_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), Nrhs);
+                LAPACK_COL_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), N);
             handle_error(res);
         }
 
@@ -82,14 +82,14 @@ namespace
 
             smp.do_sample();
             Real workspace_query;
-            int res = gels_caller<Real>::value(LAPACK_ROW_MAJOR,
-                'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs, &workspace_query, -1);
+            int res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
+                'N', M, N, Nrhs, a.data(), M, b.data(), std::max(N, M), &workspace_query, -1);
             handle_error(res);
 
             smp.do_sample();
             std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
-            res = gels_caller<Real>::value(LAPACK_ROW_MAJOR,
-                'N', M, N, Nrhs, a.data(), N, b.data(), Nrhs, work.data(), work.size());
+            res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
+                'N', M, N, Nrhs, a.data(), M, b.data(), std::max(N, M), work.data(), work.size());
             handle_error(res);
         }
 
@@ -106,19 +106,19 @@ namespace
 
             smp.do_sample();
             int res = getrf_caller<Real>::value(
-                LAPACK_ROW_MAJOR, N, N, a.data(), N, ipiv.data());
+                LAPACK_COL_MAJOR, N, N, a.data(), N, ipiv.data());
             handle_error(res);
 
             smp.do_sample();
             Real workspace_query;
-            res = getri_caller<Real>::value(LAPACK_ROW_MAJOR,
+            res = getri_caller<Real>::value(LAPACK_COL_MAJOR,
                 N, a.data(), N, ipiv.data(), &workspace_query, -1);
             handle_error(res);
 
             smp.do_sample();
             std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
             res = getri_caller<Real>::value(
-                LAPACK_ROW_MAJOR, N, a.data(), N, ipiv.data(), work.data(), work.size());
+                LAPACK_COL_MAJOR, N, a.data(), N, ipiv.data(), work.data(), work.size());
             handle_error(res);
         }
 
@@ -135,7 +135,7 @@ namespace
 
             smp.do_sample();
             int res = getrf_caller<Real>::value(
-                LAPACK_ROW_MAJOR, M, N, a.data(), N, ipiv.data());
+                LAPACK_COL_MAJOR, M, N, a.data(), M, ipiv.data());
             handle_error(res);
         }
 
@@ -151,17 +151,18 @@ namespace
 
             smp.do_sample();
             int res = tptri_caller<Real>::value(
-                LAPACK_ROW_MAJOR, 'L', 'N', N, a_packed.data());
+                LAPACK_COL_MAJOR, 'L', 'N', N, a_packed.data());
             handle_error(res);
         }
 
         template<typename Real>
         void trtri_impl(std::size_t N, std::mt19937_64& engine)
         {
-            static auto fill_lower_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            // upper triangular in column-major is lower triangular in row-major
+            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
             {
-                for (auto [it, non_zero] = std::pair{ from, 1 }; it < to; it += ld, non_zero++)
-                    for (auto entry = it; entry < it + non_zero; entry++)
+                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                    for (auto entry = it; entry < it + nnz; entry++)
                         *entry = gen();
             };
 
@@ -170,11 +171,11 @@ namespace
 
             tp::sampler smp(g_tpr);
             std::vector<Real> a(N * N);
-            fill_lower_triangular(a.begin(), a.end(), N, gen);
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
 
             smp.do_sample();
             int res = trtri_caller<Real>::value(
-                LAPACK_ROW_MAJOR, 'L', 'N', N, a.data(), N);
+                LAPACK_COL_MAJOR, 'L', 'N', N, a.data(), N);
             handle_error(res);
         }
     }
