@@ -166,6 +166,35 @@ namespace
         }
 
         template<typename Real>
+        int getrs_compute(
+            cusolverdn_handle& handle,
+            std::size_t N,
+            std::size_t Nrhs,
+            const util::device_buffer<Real>& a,
+            const util::device_buffer<std::int64_t>& ipiv,
+            util::device_buffer<Real>& b)
+        {
+            static constexpr cublasOperation_t op = CUBLAS_OP_N;
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            auto status = cusolverDnXgetrs(handle, nullptr, op, N, Nrhs,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                ipiv.get(),
+                cuda_data_type<Real>::value,
+                b.get(), N,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                throw std::runtime_error("cusolverDnXgetrs error");
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+
+        template<typename Real>
         int getrf_impl(
             cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
         {
@@ -187,6 +216,40 @@ namespace
 
             util::copy(dev_a, dev_a.size(), a.begin());
             util::copy(dev_ipiv, dev_ipiv.size(), ipiv.begin());
+            return info;
+        }
+
+        template<typename Real>
+        int getrs_impl(
+            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+
+            util::buffer<Real> a{ N * N };
+            util::buffer<Real> b{ N * Nrhs };
+            util::buffer<std::int64_t> ipiv{ N };
+            std::generate(a.begin(), a.end(), gen);
+            std::generate(b.begin(), b.end(), gen);
+
+            smp.do_sample();
+
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            util::device_buffer dev_b{ b.begin(), b.end() };
+            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+
+            int info = getrf_compute(handle, N, N, dev_a, dev_ipiv);
+            if (info)
+            {
+                std::cerr << "getrs_impl: getrf_compute error\n";
+                return info;
+            }
+
+            info = getrs_compute(handle, N, Nrhs, dev_a, dev_ipiv, dev_b);
+
+            util::copy(dev_b, dev_b.size(), b.begin());
             return info;
         }
     }
@@ -215,6 +278,20 @@ namespace
         return detail::getrf_impl<float>(handle, M, N, engine);
     }
 
+    __attribute__((noinline))
+        int dgetrs(
+            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    {
+        return detail::getrs_impl<double>(handle, N, Nrhs, engine);
+    }
+
+    __attribute__((noinline))
+        int sgetrs(
+            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    {
+        return detail::getrs_impl<float>(handle, N, Nrhs, engine);
+    }
+
     namespace work_type
     {
         enum type
@@ -223,6 +300,8 @@ namespace
             strtri,
             dgetrf,
             sgetrf,
+            dgetrs,
+            sgetrs,
         };
     };
 
@@ -230,6 +309,7 @@ namespace
     {
         std::size_t m = 0;
         std::size_t n = 0;
+        std::size_t nrhs = 0;
         work_type::type wtype = static_cast<work_type::type>(0);
 
         cmdargs(int argc, const char* const* argv)
@@ -259,6 +339,19 @@ namespace
                 assert(m > 0);
                 assert(n > 0);
             }
+            else if (wtype == work_type::dgetrs || wtype == work_type::sgetrs)
+            {
+                if (argc < 4)
+                    throw_too_few(prog, op_type);
+                util::to_scalar(argv[2], n);
+                if (n == 0)
+                    throw std::invalid_argument("n must be a positive integer");
+                util::to_scalar(argv[3], nrhs);
+                if (nrhs == 0)
+                    throw std::invalid_argument("n_rhs must be a positive integer");
+                assert(n > 0);
+                assert(nrhs > 0);
+            }
             else if (wtype == work_type::dtrtri || wtype == work_type::strtri)
             {
                 if (argc < 3)
@@ -287,6 +380,8 @@ namespace
             WORK_RETURN_IF(op_type, strtri);
             WORK_RETURN_IF(op_type, dgetrf);
             WORK_RETURN_IF(op_type, sgetrf);
+            WORK_RETURN_IF(op_type, dgetrs);
+            WORK_RETURN_IF(op_type, sgetrs);
             throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
         }
 
@@ -294,7 +389,8 @@ namespace
         {
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dtrtri,strtri} <n>\n"
-                << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
+                << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n"
+                << "\t" << prog << " {dgetrs,sgetrs} <n> <n_rhs>\n";
         }
     };
 
@@ -314,6 +410,12 @@ namespace
         case work_type::sgetrf:
             std::cerr << "sgetrf M=" << args.m << ", N=" << args.n << "\n";
             return sgetrf(handle, args.m, args.n, gen);
+        case work_type::dgetrs:
+            std::cerr << "dgetrs N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
+            return dgetrs(handle, args.n, args.nrhs, gen);
+        case work_type::sgetrs:
+            std::cerr << "sgetrs N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
+            return sgetrs(handle, args.n, args.nrhs, gen);
         }
         throw std::runtime_error("Invalid work type");
     }
