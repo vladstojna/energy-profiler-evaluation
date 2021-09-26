@@ -44,6 +44,7 @@ namespace
         DEFINE_CALLER(gels);
         DEFINE_CALLER(getri);
         DEFINE_CALLER(getrf);
+        DEFINE_CALLER(getrs);
         DEFINE_CALLER(tptri);
         DEFINE_CALLER(trtri);
 
@@ -140,6 +141,31 @@ namespace
         }
 
         template<typename Real>
+        void getrs_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a(N * N);
+            std::vector<Real> b(N * Nrhs);
+            std::vector<lapack_int> ipiv(N);
+
+            std::generate(a.begin(), a.end(), gen);
+            std::generate(b.begin(), b.end(), gen);
+
+            smp.do_sample();
+            int res = getrf_caller<Real>::value(
+                LAPACK_COL_MAJOR, N, N, a.data(), N, ipiv.data());
+            handle_error(res);
+
+            smp.do_sample();
+            res = getrs_caller<Real>::value(
+                LAPACK_COL_MAJOR, 'N', N, Nrhs, a.data(), N, ipiv.data(), b.data(), N);
+            handle_error(res);
+        }
+
+        template<typename Real>
         void tptri_impl(std::size_t N, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
@@ -180,12 +206,6 @@ namespace
         }
     }
 
-    using work_func = void(*)(
-        std::size_t,
-        std::size_t,
-        std::size_t,
-        std::mt19937_64&);
-
     __attribute__((noinline))
         void dgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
@@ -196,6 +216,18 @@ namespace
         void sgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gesv_impl<float>(N, Nrhs, engine);
+    }
+
+    __attribute__((noinline))
+        void dgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    {
+        detail::getrs_impl<double>(N, Nrhs, engine);
+    }
+
+    __attribute__((noinline))
+        void sgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    {
+        detail::getrs_impl<float>(N, Nrhs, engine);
     }
 
     __attribute__((noinline))
@@ -260,6 +292,7 @@ namespace
 
     class cmdparams
     {
+        using work_func = decltype(&dgesv);
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t nrhs = 0;
@@ -292,7 +325,7 @@ namespace
                 util::to_scalar(argv[3], n);
                 util::to_scalar(argv[4], nrhs);
             }
-            else if (func == dgesv || func == sgesv)
+            else if (func == dgesv || func == sgesv || func == dgetrs || func == sgetrs)
             {
                 if (argc < 4)
                 {
@@ -368,13 +401,17 @@ namespace
                 return dtrtri;
             if (str == "strtri")
                 return strtri;
+            if (str == "dgetrs")
+                return dgetrs;
+            if (str == "sgetrs")
+                return sgetrs;
             return nullptr;
         }
 
         void print_usage(const char* prog)
         {
             std::cerr << "Usage:\n"
-                << "\t" << prog << " {dgesv,sgesv} <n> <nrhs>\n"
+                << "\t" << prog << " {dgesv,sgesv,dgetrs,sgetrs} <n> <nrhs>\n"
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
                 << "\t" << prog << " {dgetri,sgetri} <n>\n"
                 << "\t" << prog << " {dtptri,stptri,dtrtri,strtri} <n>\n"
