@@ -72,7 +72,7 @@ def float_or_int(s: str) -> Union[float, str]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert perf stat output to a more plottable format"
+        description="Filter duplicate readings (zero energy) from a converted perf stat output"
     )
     args = add_arguments(parser).parse_args()
     with read_from(args.source_file) as f:
@@ -86,6 +86,8 @@ def main():
             if first_row is None:
                 raise AssertionError("File has no data rows")
             dwriter.writerow(first_row)
+            # Add one because the count starts from the next line
+            # Add two because both the fieldname and first data lines are not considered
             for ln, row in enumerate(data, start=meta.line_num + 2 + 1):
                 if all(
                     float_or_int(val)
