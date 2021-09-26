@@ -121,37 +121,22 @@ namespace
         }
 
         template<typename Real>
-        int getrf_impl(
-            cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+        int getrf_compute(
+            cusolverdn_handle& handle,
+            std::size_t M,
+            std::size_t N,
+            util::device_buffer<Real>& a,
+            util::device_buffer<std::int64_t>& ipiv)
         {
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
 
             int info = 0;
-            util::buffer<Real> a{ M * N };
-            util::buffer<std::int64_t> ipiv{ std::min(M, N) };
-            std::generate(a.begin(), a.end(), gen);
-
-            smp.do_sample();
-
-            util::device_buffer dev_a{ a.begin(), a.end() };
-            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
-            util::device_buffer<int> dev_info{ 1 };
-            if (auto status = cudaMemset(dev_info.get(), 0, sizeof(decltype(dev_info)::value_type));
-                status != cudaSuccess)
-            {
-                throw util::device_exception(util::get_cuda_error_str("cudaMemset", status));
-            }
-
-            smp.do_sample();
-
+            util::device_buffer dev_info{ &info, &info + 1 };
             std::size_t workspace_device;
             std::size_t workspace_host;
             auto status = cusolverDnXgetrf_bufferSize(handle, nullptr, M, N,
                 cuda_data_type<Real>::value,
-                dev_a.get(), M,
+                a.get(), M,
                 cuda_data_type<Real>::value,
                 &workspace_device,
                 &workspace_host);
@@ -167,8 +152,8 @@ namespace
 
             status = cusolverDnXgetrf(handle, nullptr, M, N,
                 cuda_data_type<Real>::value,
-                dev_a.get(), M,
-                dev_ipiv.get(),
+                a.get(), M,
+                ipiv.get(),
                 cuda_data_type<Real>::value,
                 dev_work.get(), workspace_device,
                 host_work.get(), workspace_host,
@@ -176,11 +161,32 @@ namespace
             if (status != CUSOLVER_STATUS_SUCCESS)
                 throw std::runtime_error("cusolverDnXgetrf error");
 
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+
+        template<typename Real>
+        int getrf_impl(
+            cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+
+            util::buffer<Real> a{ M * N };
+            util::buffer<std::int64_t> ipiv{ std::min(M, N) };
+            std::generate(a.begin(), a.end(), gen);
+
             smp.do_sample();
+
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+
+            int info = getrf_compute(handle, M, N, dev_a, dev_ipiv);
 
             util::copy(dev_a, dev_a.size(), a.begin());
             util::copy(dev_ipiv, dev_ipiv.size(), ipiv.begin());
-            util::copy(dev_info, 1, &info);
             return info;
         }
     }
