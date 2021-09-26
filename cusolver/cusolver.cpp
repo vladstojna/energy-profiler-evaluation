@@ -57,10 +57,11 @@ namespace
             static constexpr const cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
             static constexpr const cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
 
-            static auto fill_lower_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            // upper triangular in column-major is lower triangular in row-major
+            static auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
             {
-                for (auto [it, non_zero] = std::pair{ from, 1 }; it < to; it += ld, non_zero++)
-                    for (auto entry = it; entry < it + non_zero; entry++)
+                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                    for (auto entry = it; entry < it + nnz; entry++)
                         *entry = gen();
             };
 
@@ -72,7 +73,7 @@ namespace
             int info = 0;
             util::buffer<Real> a{ N * N };
             std::fill(a.begin(), a.end(), Real{});
-            fill_lower_triangular(a.begin(), a.end(), N, gen);
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
 
             smp.do_sample();
 
