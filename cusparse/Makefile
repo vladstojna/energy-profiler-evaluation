@@ -27,7 +27,7 @@ else
 cflags += -O3 -DNDEBUG -fno-optimize-sibling-calls
 endif
 
-.PHONY: default remake clean purge
+.PHONY: default remake clean
 
 default: $(target)
 
