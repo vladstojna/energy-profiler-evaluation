@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <params>
+        <domain_mask>0xb</domain_mask>
+    </params>
+
+    <sections>
+
+        <section target="cpu" label="generate_host_double_precision">
+            <bounds>
+                <func name="util::buffer<double>::size_type (anonymous namespace)::generate_host"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="generate_host_single_precision">
+            <bounds>
+                <func name="util::buffer<float>::size_type (anonymous namespace)::generate_host"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="generate_device_double_precision">
+            <bounds>
+                <func name="util::device_buffer<double>::size_type (anonymous namespace)::generate_device"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="generate_device_single_precision">
+            <bounds>
+                <func name="util::device_buffer<float>::size_type (anonymous namespace)::generate_device"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+    </sections>
+
+</config>
