@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <params>
+        <domain_mask>0xb</domain_mask>
+    </params>
+
+    <sections>
+
+        <section target="gpu" label="dtrtri">
+            <bounds>
+                <func name="(anonymous namespace)::dtrtri"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="strtri">
+            <bounds>
+                <func name="(anonymous namespace)::strtri"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="dgetrf">
+            <bounds>
+                <func name="(anonymous namespace)::dgetrf"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="sgetrf">
+            <bounds>
+                <func name="(anonymous namespace)::sgetrf"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="dgetrs">
+            <bounds>
+                <func name="(anonymous namespace)::dgetrs"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="sgetrs">
+            <bounds>
+                <func name="(anonymous namespace)::sgetrs"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="dgesv">
+            <bounds>
+                <func name="(anonymous namespace)::dgesv"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="sgesv">
+            <bounds>
+                <func name="(anonymous namespace)::sgesv"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="dgels">
+            <bounds>
+                <func name="(anonymous namespace)::dgels"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="sgels">
+            <bounds>
+                <func name="(anonymous namespace)::sgels"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+    </sections>
+
+</config>
