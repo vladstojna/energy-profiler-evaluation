@@ -24,7 +24,7 @@ debug ?=
 ifdef debug
 cflags += -Og
 else
-cflags += -O3 -DNDEBUG
+cflags += -O3 -DNDEBUG -fno-optimize-sibling-calls
 endif
 
 .PHONY: default remake clean purge
