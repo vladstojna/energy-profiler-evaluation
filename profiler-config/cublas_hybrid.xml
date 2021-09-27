@@ -2,10 +2,6 @@
 
 <config>
 
-    <params>
-        <domain_mask>0xb</domain_mask>
-    </params>
-
     <sections>
 
         <section target="cpu,gpu" label="dgemm">
