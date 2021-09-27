@@ -332,6 +332,7 @@ namespace
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
                 cusolver_error(call::compute_str, status);
+            cudaDeviceSynchronize();
 
             smp.do_sample();
 
@@ -392,6 +393,7 @@ namespace
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
                 cusolver_error(call::compute_str, status);
+            cudaDeviceSynchronize();
 
             smp.do_sample();
 
