@@ -17,6 +17,25 @@ namespace
     template<auto Func>
     struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
+#if CUDART_VERSION < 11040
+    std::pair<int, int> cudart_separate_version(int version)
+    {
+        return { version / 1000, (version % 1000) / 10 };
+    }
+
+    std::string unsupported_version(std::string_view feature, std::string_view required)
+    {
+        auto [major, minor] = cudart_separate_version(CUDART_VERSION);
+        return std::string(feature)
+            .append(" requires CUDA Toolkit v")
+            .append(required)
+            .append(" or higher, found CUDA runtime v")
+            .append(std::to_string(major))
+            .append(".")
+            .append(std::to_string(minor));
+    }
+#endif // CUDART_VERSION < 11040
+
     cusolverDnHandle_t cusolverdn_create()
     {
         cusolverDnHandle_t handle;
@@ -44,22 +63,30 @@ namespace
         static constexpr auto compute = cusolverDn ## prec ## prefix; \
         static constexpr const char compute_str[] = "cusolverDn" #prec #prefix
 
-    #define DEFINE_CALL(prefix) \
+    #define DEFINE_CALL_ANY(prefix, prec_single, prec_double) \
         template<typename> \
         struct prefix ## _call {}; \
         template<> \
         struct prefix ## _call<float> \
         { \
-            DEFINE_CALL_MEMBERS(prefix, SS); \
+            DEFINE_CALL_MEMBERS(prefix, prec_single); \
         }; \
         template<> \
         struct prefix ## _call<double> \
         { \
-            DEFINE_CALL_MEMBERS(prefix, DD); \
+            DEFINE_CALL_MEMBERS(prefix, prec_double); \
         }
 
-        DEFINE_CALL(gesv);
-        DEFINE_CALL(gels);
+    #define DEFINE_CALL_IRS(prefix) DEFINE_CALL_ANY(prefix, SS, DD)
+    #define DEFINE_CALL(prefix) DEFINE_CALL_ANY(prefix, S, D)
+
+    #if CUDART_VERSION >= 10020
+        DEFINE_CALL_IRS(gesv);
+    #endif // CUDART_VERSION >= 10020
+
+    #if CUDART_VERSION >= 11000
+        DEFINE_CALL_IRS(gels);
+    #endif // CUDART_VERSION >= 11000
 
         template<typename>
         struct cuda_data_type {};
@@ -80,6 +107,13 @@ namespace
                 .append(" error, status = ").append(std::to_string(status)));
         }
 
+    #if CUDART_VERSION < 11040
+        template<typename Real>
+        int trtri_impl(cusolverdn_handle&, std::size_t, std::mt19937_64&)
+        {
+            throw std::runtime_error(unsupported_version("cusolverDnXtrtri()", "11.4"));
+        }
+    #else
         template<typename Real>
         int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
         {
@@ -148,6 +182,7 @@ namespace
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11040
 
         template<typename Real>
         int getrf_compute(
@@ -282,6 +317,13 @@ namespace
             return info;
         }
 
+    #if CUDART_VERSION < 10020
+        template<typename Real>
+        int gesv_impl(cusolverdn_handle&, std::size_t, std::size_t, std::mt19937_64&)
+        {
+            throw std::runtime_error(unsupported_version("cusolverDn<t1><t2>gesv()", "10.2"));
+        }
+    #else
         template<typename Real>
         int gesv_impl(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -343,7 +385,15 @@ namespace
             util::copy(dev_a, dev_a.size(), a.begin());
             return info;
         }
+    #endif // CUDART_VERSION < 10020
 
+    #if CUDART_VERSION < 11000
+        template<typename Real>
+        int gels_impl(cusolverdn_handle&, std::size_t, std::size_t, std::size_t, std::mt19937_64&)
+        {
+            throw std::runtime_error(unsupported_version("cusolverDn<t1><t2>gels()", "11.0"));
+        }
+    #else
         template<typename Real>
         int gels_impl(
             cusolverdn_handle& handle, std::size_t M, std::size_t N,
@@ -403,6 +453,7 @@ namespace
             util::copy(dev_a, dev_a.size(), a.begin());
             return info;
         }
+    #endif // CUDART_VERSION < 11000
     }
 
     __attribute__((noinline))
@@ -488,7 +539,7 @@ namespace
             dgels,
             sgels,
         };
-    };
+    }
 
     struct cmdargs
     {
