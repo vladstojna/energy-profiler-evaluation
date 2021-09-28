@@ -88,6 +88,12 @@ namespace
         DEFINE_CALL_IRS(gels);
     #endif // CUDART_VERSION >= 11000
 
+    #if CUDART_VERSION < 11010
+        using index_type = cusolver_int_t;
+    #else
+        using index_type = std::int64_t;
+    #endif // CUDART_VERSION < 11010
+
         template<typename>
         struct cuda_data_type {};
 
@@ -184,13 +190,48 @@ namespace
         }
     #endif // CUDART_VERSION < 11040
 
+    #if CUDART_VERSION < 11010
+
+        DEFINE_CALL(getrf);
+
         template<typename Real>
         int getrf_compute(
             cusolverdn_handle& handle,
             std::size_t M,
             std::size_t N,
             util::device_buffer<Real>& a,
-            util::device_buffer<std::int64_t>& ipiv)
+            util::device_buffer<index_type>& ipiv)
+        {
+            using call = getrf_call<Real>;
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+            int lwork;
+            auto status = call::query(handle, M, N, a.get(), M, &lwork);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::query_str, status);
+
+            smp.do_sample();
+
+            util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+
+            status = call::compute(
+                handle, M, N, a.get(), M, dev_work.get(), ipiv.get(), dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
+        template<typename Real>
+        int getrf_compute(
+            cusolverdn_handle& handle,
+            std::size_t M,
+            std::size_t N,
+            util::device_buffer<Real>& a,
+            util::device_buffer<index_type>& ipiv)
         {
             tp::sampler smp(g_tpr);
 
@@ -228,6 +269,23 @@ namespace
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11010
+
+    #if CUDART_VERSION < 11010
+        template<typename>
+        struct getrs_call {};
+        template<>
+        struct getrs_call<float>
+        {
+            static constexpr auto compute = cusolverDnSgetrs;
+            static constexpr const char compute_str[] = "cusolverDnSgetrs";
+        };
+        template<>
+        struct getrs_call<double>
+        {
+            static constexpr auto compute = cusolverDnDgetrs;
+            static constexpr const char compute_str[] = "cusolverDnDgetrs";
+        };
 
         template<typename Real>
         int getrs_compute(
@@ -235,7 +293,31 @@ namespace
             std::size_t N,
             std::size_t Nrhs,
             const util::device_buffer<Real>& a,
-            const util::device_buffer<std::int64_t>& ipiv,
+            const util::device_buffer<index_type>& ipiv,
+            util::device_buffer<Real>& b)
+        {
+            constexpr cublasOperation_t op = CUBLAS_OP_N;
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            auto status = getrs_call<Real>::compute(
+                handle, op, N, Nrhs, a.get(), N, ipiv.get(), b.get(), N, dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(getrs_call<Real>::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
+        template<typename Real>
+        int getrs_compute(
+            cusolverdn_handle& handle,
+            std::size_t N,
+            std::size_t Nrhs,
+            const util::device_buffer<Real>& a,
+            const util::device_buffer<index_type>& ipiv,
             util::device_buffer<Real>& b)
         {
             constexpr cublasOperation_t op = CUBLAS_OP_N;
@@ -257,6 +339,7 @@ namespace
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11010
 
         template<typename Real>
         int getrf_impl(
@@ -268,13 +351,13 @@ namespace
             tp::sampler smp(g_tpr);
 
             util::buffer<Real> a{ M * N };
-            util::buffer<std::int64_t> ipiv{ std::min(M, N) };
+            util::buffer<index_type> ipiv{ std::min(M, N) };
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
 
             util::device_buffer dev_a{ a.begin(), a.end() };
-            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+            util::device_buffer<index_type> dev_ipiv{ ipiv.size() };
 
             int info = getrf_compute(handle, M, N, dev_a, dev_ipiv);
 
@@ -294,7 +377,7 @@ namespace
 
             util::buffer<Real> a{ N * N };
             util::buffer<Real> b{ N * Nrhs };
-            util::buffer<std::int64_t> ipiv{ N };
+            util::buffer<index_type> ipiv{ N };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
@@ -302,7 +385,7 @@ namespace
 
             util::device_buffer dev_a{ a.begin(), a.end() };
             util::device_buffer dev_b{ b.begin(), b.end() };
-            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+            util::device_buffer<index_type> dev_ipiv{ ipiv.size() };
 
             int info = getrf_compute(handle, N, N, dev_a, dev_ipiv);
             if (info)
@@ -694,7 +777,7 @@ namespace
         else
             std::cerr << "Invalid parameter, info = " << info << "\n";
     }
-}
+    }
 
 int main(int argc, char** argv)
 {
