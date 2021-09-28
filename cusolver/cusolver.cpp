@@ -113,54 +113,22 @@ namespace
         }
     #endif // CUDART_VERSION < 11040
 
-    #if CUDART_VERSION < 11040
         template<typename Real>
-        int trtri_impl(cusolverdn_handle&, std::size_t, std::mt19937_64&)
-        {
-            throw std::runtime_error(unsupported_version("cusolverDnXtrtri()", "11.4"));
-        }
-    #else
-        template<typename Real>
-        int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+        int trtri_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
         {
             constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
             constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
 
-            // upper triangular in column-major is lower triangular in row-major
-            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
-            {
-                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
-                    for (auto entry = it; entry < it + nnz; entry++)
-                        *entry = gen();
-            };
-
-            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
 
             int info = 0;
-            util::buffer<Real> a{ N * N };
-            std::fill(a.begin(), a.end(), Real{});
-            fill_upper_triangular(a.begin(), a.end(), N, gen);
-
-            smp.do_sample();
-
-            util::device_buffer dev_a{ a.begin(), a.end() };
-            util::device_buffer<int> dev_info{ 1 };
-            if (auto status = cudaMemset(dev_info.get(), 0, sizeof(decltype(dev_info)::value_type));
-                status != cudaSuccess)
-            {
-                throw util::device_exception(util::get_cuda_error_str("cudaMemset", status));
-            }
-
-            smp.do_sample();
+            util::device_buffer dev_info{ &info, &info + 1 };
 
             std::size_t workspace_device;
             std::size_t workspace_host;
             auto status = cusolverDnXtrtri_bufferSize(handle, uplo, diag, N,
                 cuda_data_type<Real>::value,
-                dev_a.get(), N,
+                a.get(), N,
                 &workspace_device, &workspace_host);
             if (status != CUSOLVER_STATUS_SUCCESS)
                 cusolver_error("cusolverDnXtrtri_bufferSize", status);
@@ -174,18 +142,50 @@ namespace
 
             status = cusolverDnXtrtri(handle, uplo, diag, N,
                 cuda_data_type<Real>::value,
-                dev_a.get(), N,
+                a.get(), N,
                 dev_work.get(), workspace_device,
                 host_work.get(), workspace_host,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
                 cusolver_error("cusolverDnXtrtri", status);
-            cudaDeviceSynchronize();
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+
+    #if CUDART_VERSION < 11040
+        template<typename Real>
+        int trtri_impl(cusolverdn_handle&, std::size_t, std::mt19937_64&)
+        {
+            throw std::runtime_error(unsupported_version("cusolverDnXtrtri()", "11.4"));
+        }
+    #else
+        template<typename Real>
+        int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+        {
+            // upper triangular in column-major is lower triangular in row-major
+            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            {
+                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                    for (auto entry = it; entry < it + nnz; entry++)
+                        *entry = gen();
+            };
+
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+
+            util::buffer<Real> a{ N * N };
+            std::fill(a.begin(), a.end(), Real{});
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
 
             smp.do_sample();
 
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            int info = trtri_compute(handle, N, dev_a);
+
             util::copy(dev_a, dev_a.size(), a.begin());
-            util::copy(dev_info, 1, &info);
             return info;
         }
     #endif // CUDART_VERSION < 11040
