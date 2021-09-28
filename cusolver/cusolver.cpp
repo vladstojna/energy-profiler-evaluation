@@ -113,6 +113,40 @@ namespace
         }
     #endif // CUDART_VERSION < 11040
 
+    #if CUDART_VERSION < 11040
+
+        DEFINE_CALL(trtri);
+
+        template<typename Real>
+        int trtri_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
+        {
+            using call = trtri_call<Real>;
+
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+            constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+            int lwork;
+            auto status = call::query(handle, uplo, diag, N, a.get(), N, &lwork);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::query_str, status);
+
+            smp.do_sample();
+
+            util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+
+            status = call::compute(
+                handle, uplo, diag, N, a.get(), N, dev_work.get(), lwork, dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
         template<typename Real>
         int trtri_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
         {
@@ -152,14 +186,8 @@ namespace
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11040
 
-    #if CUDART_VERSION < 11040
-        template<typename Real>
-        int trtri_impl(cusolverdn_handle&, std::size_t, std::mt19937_64&)
-        {
-            throw std::runtime_error(unsupported_version("cusolverDnXtrtri()", "11.4"));
-        }
-    #else
         template<typename Real>
         int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
         {
@@ -188,7 +216,6 @@ namespace
             util::copy(dev_a, dev_a.size(), a.begin());
             return info;
         }
-    #endif // CUDART_VERSION < 11040
 
     #if CUDART_VERSION < 11010
 
