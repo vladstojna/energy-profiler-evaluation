@@ -17,25 +17,6 @@ namespace
     template<auto Func>
     struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
-#if CUDART_VERSION < 11040
-    std::pair<int, int> cudart_separate_version(int version)
-    {
-        return { version / 1000, (version % 1000) / 10 };
-    }
-
-    std::string unsupported_version(std::string_view feature, std::string_view required)
-    {
-        auto [major, minor] = cudart_separate_version(CUDART_VERSION);
-        return std::string(feature)
-            .append(" requires CUDA Toolkit v")
-            .append(required)
-            .append(" or higher, found CUDA runtime v")
-            .append(std::to_string(major))
-            .append(".")
-            .append(std::to_string(minor));
-    }
-#endif // CUDART_VERSION < 11040
-
     cusolverDnHandle_t cusolverdn_create()
     {
         cusolverDnHandle_t handle;
@@ -112,6 +93,25 @@ namespace
             throw std::runtime_error(std::string(func)
                 .append(" error, status = ").append(std::to_string(status)));
         }
+
+    #if CUDART_VERSION < 11040
+        std::pair<int, int> cudart_separate_version(int version)
+        {
+            return { version / 1000, (version % 1000) / 10 };
+        }
+
+        std::string unsupported_version(std::string_view feature, std::string_view required)
+        {
+            auto [major, minor] = cudart_separate_version(CUDART_VERSION);
+            return std::string(feature)
+                .append(" requires CUDA Toolkit v")
+                .append(required)
+                .append(" or higher, found CUDA runtime v")
+                .append(std::to_string(major))
+                .append(".")
+                .append(std::to_string(minor));
+        }
+    #endif // CUDART_VERSION < 11040
 
     #if CUDART_VERSION < 11040
         template<typename Real>
@@ -777,7 +777,7 @@ namespace
         else
             std::cerr << "Invalid parameter, info = " << info << "\n";
     }
-    }
+}
 
 int main(int argc, char** argv)
 {
