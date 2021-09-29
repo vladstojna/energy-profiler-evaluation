@@ -13,6 +13,9 @@
 #include <tuple>
 #include <vector>
 
+#if CUDART_VERSION < 11000
+#error CUDA Toolkit version 11.0 or higher required
+#else
 namespace
 {
     tp::printer g_tpr;
@@ -42,7 +45,7 @@ namespace
             std::cerr << "Error destroying cuSPARSE: "
                 << cusparseGetErrorString(status) << "\n";
         }
-    };
+    }
 
     using cusparse_handle = util::unique_handle<
         cusparseHandle_t,
@@ -71,7 +74,7 @@ namespace
                 throw std::runtime_error(
                     get_cusparse_error("Error creating cusparseSpGEMMDescr_t", status));
             return descriptor;
-        };
+        }
 
         void cusparse_spgemm_descr_destroy(cusparseSpGEMMDescr_t descriptor)
         {
@@ -81,7 +84,7 @@ namespace
                 std::cerr << "Error destroying cusparseSpGEMMDescr_t: "
                     << cusparseGetErrorString(status) << "\n";
             }
-        };
+        }
 
         template<typename Real>
         cusparseSpMatDescr_t cusparse_csr_create(
@@ -99,7 +102,7 @@ namespace
                 throw std::runtime_error(
                     get_cusparse_error("Error creating CSR matrix descriptor", status));
             return mat;
-        };
+        }
 
         template<typename Real>
         cusparseSpMatDescr_t cusparse_csr_create(std::int32_t M, std::int32_t N)
@@ -113,7 +116,7 @@ namespace
                 throw std::runtime_error(
                     get_cusparse_error("Error creating CSR matrix descriptor", status));
             return mat;
-        };
+        }
 
         void cusparse_csr_destroy(cusparseSpMatDescr_t desc)
         {
@@ -123,7 +126,7 @@ namespace
                 std::cerr << "Error destroying cusparseSpMatDescr_t: "
                     << cusparseGetErrorString(status) << "\n";
             }
-        };
+        }
 
         using cusparse_spgemm_descr = util::unique_handle<
             cusparseSpGEMMDescr_t,
@@ -503,3 +506,4 @@ int main(int argc, char** argv)
         std::cerr << e.what() << std::endl;
     }
 }
+#endif // CUDART_VERSION < 11000
