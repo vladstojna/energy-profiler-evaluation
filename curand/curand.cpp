@@ -89,7 +89,7 @@ namespace
     template<typename RealType>
     __attribute__((noinline))
         typename util::buffer<RealType>::size_type
-        generate_host(std::size_t count, std::vector<std::mt19937>& engines)
+        generate_host(std::size_t count, std::size_t iters, std::vector<std::mt19937>& engines)
     {
         assert(count > 0);
         tp::sampler smp(g_tpr);
@@ -99,9 +99,14 @@ namespace
         {
             auto& engine = engines[omp_get_thread_num()];
             std::uniform_real_distribution<RealType> dist{ 0.0, 1.0 };
-        #pragma omp for
-            for (std::size_t i = 0; i < host_buff.size(); i++)
-                host_buff[i] = dist(engine);
+            for (std::size_t x = 0; x < iters; x++)
+            {
+            #pragma omp for
+                for (std::size_t i = 0; i < host_buff.size(); i++)
+                {
+                    host_buff[i] = dist(engine);
+                }
+            }
         }
         return host_buff.size();
     }
@@ -109,16 +114,19 @@ namespace
     template<typename RealType>
     __attribute__((noinline))
         typename util::device_buffer<RealType>::size_type
-        generate_device(std::size_t count, curandGenerator_t gen)
+        generate_device(std::size_t count, std::size_t iters, curandGenerator_t gen)
     {
         assert(count > 0);
         tp::sampler smp(g_tpr);
         util::device_buffer<RealType> dev_buff{ count };
         smp.do_sample();
-        auto status = detail::generate_func<RealType>{}(gen, dev_buff.get(), count);
-        if (status != CURAND_STATUS_SUCCESS)
-            throw std::runtime_error("Error generating uniform distribution");
-        cudaDeviceSynchronize();
+        for (std::size_t x = 0; x < iters; x++)
+        {
+            auto status = detail::generate_func<RealType>{}(gen, dev_buff.get(), count);
+            if (status != CURAND_STATUS_SUCCESS)
+                throw std::runtime_error("Error generating uniform distribution");
+            cudaDeviceSynchronize();
+        }
         return dev_buff.size();
     }
 
@@ -135,10 +143,12 @@ namespace
     struct cmdargs
     {
         std::size_t count;
+        std::size_t iters;
         work_type::type wtype;
 
         cmdargs(int argc, const char* const* argv) :
             count(0),
+            iters(1),
             wtype(work_type::none)
         {
             if (argc < 4)
@@ -164,8 +174,15 @@ namespace
                 wtype |= work_type::single_prec;
             else
                 throw std::invalid_argument(run_on.append(": invalid precision"));
+            if (argc > 4)
+            {
+                util::to_scalar(argv[4], iters);
+                if (!iters)
+                    throw std::invalid_argument("[iters] must be positive");
+            }
             assert(wtype);
             assert(count);
+            assert(iters >= 1);
         }
 
     private:
@@ -179,7 +196,7 @@ namespace
 
         void usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " <count> {host,device} {d,s}\n";
+            std::cerr << "Usage: " << prog << " <count> {host,device} {d,s} [iters]\n";
         }
     };
 }
@@ -188,31 +205,31 @@ int main(int argc, char** argv)
 {
     try
     {
-        auto execute_work = [](work_type::type wtype, std::size_t count, std::random_device& rd)
+        auto execute_work = [](const cmdargs& args, std::random_device& rd)
         {
-            switch (wtype)
+            switch (args.wtype)
             {
             case work_type::device | work_type::double_prec:
             {
                 generator_handle gen{ curand_generator_create_device() };
                 curand_set_generator_seed(gen, rd);
-                return generate_device<double>(count, gen);
+                return generate_device<double>(args.count, args.iters, gen);
             }
             case work_type::device | work_type::single_prec:
             {
                 generator_handle gen{ curand_generator_create_device() };
                 curand_set_generator_seed(gen, rd);
-                return generate_device<float>(count, gen);
+                return generate_device<float>(args.count, args.iters, gen);
             }
             case work_type::host | work_type::double_prec:
             {
                 auto engines = get_engines(rd);
-                return generate_host<double>(count, engines);
+                return generate_host<double>(args.count, args.iters, engines);
             }
             case work_type::host | work_type::single_prec:
             {
                 auto engines = get_engines(rd);
-                return generate_host<float>(count, engines);
+                return generate_host<float>(args.count, args.iters, engines);
             }
             }
             throw std::runtime_error("execute_work: invalid work type");
@@ -220,7 +237,7 @@ int main(int argc, char** argv)
 
         const cmdargs args(argc, argv);
         std::random_device rd;
-        auto count = execute_work(args.wtype, args.count, rd);
+        auto count = execute_work(args, rd);
         std::cerr << "Generated " << count << " pseudorandom numbers\n";
     }
     catch (const std::exception& e)
