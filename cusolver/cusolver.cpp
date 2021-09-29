@@ -44,22 +44,36 @@ namespace
         static constexpr auto compute = cusolverDn ## prec ## prefix; \
         static constexpr const char compute_str[] = "cusolverDn" #prec #prefix
 
-    #define DEFINE_CALL(prefix) \
+    #define DEFINE_CALL_ANY(prefix, prec_single, prec_double) \
         template<typename> \
         struct prefix ## _call {}; \
         template<> \
         struct prefix ## _call<float> \
         { \
-            DEFINE_CALL_MEMBERS(prefix, SS); \
+            DEFINE_CALL_MEMBERS(prefix, prec_single); \
         }; \
         template<> \
         struct prefix ## _call<double> \
         { \
-            DEFINE_CALL_MEMBERS(prefix, DD); \
+            DEFINE_CALL_MEMBERS(prefix, prec_double); \
         }
 
-        DEFINE_CALL(gesv);
-        DEFINE_CALL(gels);
+    #define DEFINE_CALL_IRS(prefix) DEFINE_CALL_ANY(prefix, SS, DD)
+    #define DEFINE_CALL(prefix) DEFINE_CALL_ANY(prefix, S, D)
+
+    #if CUDART_VERSION >= 10020
+        DEFINE_CALL_IRS(gesv);
+    #endif // CUDART_VERSION >= 10020
+
+    #if CUDART_VERSION >= 11000
+        DEFINE_CALL_IRS(gels);
+    #endif // CUDART_VERSION >= 11000
+
+    #if CUDART_VERSION < 11010
+        using index_type = cusolver_int_t;
+    #else
+        using index_type = std::int64_t;
+    #endif // CUDART_VERSION < 11010
 
         template<typename>
         struct cuda_data_type {};
@@ -80,47 +94,75 @@ namespace
                 .append(" error, status = ").append(std::to_string(status)));
         }
 
-        template<typename Real>
-        int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    #if CUDART_VERSION < 11040
+        std::pair<int, int> cudart_separate_version(int version)
         {
+            return { version / 1000, (version % 1000) / 10 };
+        }
+
+        std::string unsupported_version(std::string_view feature, std::string_view required)
+        {
+            auto [major, minor] = cudart_separate_version(CUDART_VERSION);
+            return std::string(feature)
+                .append(" requires CUDA Toolkit v")
+                .append(required)
+                .append(" or higher, found CUDA runtime v")
+                .append(std::to_string(major))
+                .append(".")
+                .append(std::to_string(minor));
+        }
+    #endif // CUDART_VERSION < 11040
+
+    #if CUDART_VERSION < 11040
+
+        DEFINE_CALL(trtri);
+
+        template<typename Real>
+        int trtri_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
+        {
+            using call = trtri_call<Real>;
+
             constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
             constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
-
-            // upper triangular in column-major is lower triangular in row-major
-            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
-            {
-                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
-                    for (auto entry = it; entry < it + nnz; entry++)
-                        *entry = gen();
-            };
-
-            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
-            auto gen = [&]() { return dist(engine); };
 
             tp::sampler smp(g_tpr);
 
             int info = 0;
-            util::buffer<Real> a{ N * N };
-            std::fill(a.begin(), a.end(), Real{});
-            fill_upper_triangular(a.begin(), a.end(), N, gen);
+            util::device_buffer dev_info{ &info, &info + 1 };
+            int lwork;
+            auto status = call::query(handle, uplo, diag, N, a.get(), N, &lwork);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::query_str, status);
 
             smp.do_sample();
 
-            util::device_buffer dev_a{ a.begin(), a.end() };
-            util::device_buffer<int> dev_info{ 1 };
-            if (auto status = cudaMemset(dev_info.get(), 0, sizeof(decltype(dev_info)::value_type));
-                status != cudaSuccess)
-            {
-                throw util::device_exception(util::get_cuda_error_str("cudaMemset", status));
-            }
+            util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
 
-            smp.do_sample();
+            status = call::compute(
+                handle, uplo, diag, N, a.get(), N, dev_work.get(), lwork, dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
+        template<typename Real>
+        int trtri_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
+        {
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+            constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
 
             std::size_t workspace_device;
             std::size_t workspace_host;
             auto status = cusolverDnXtrtri_bufferSize(handle, uplo, diag, N,
                 cuda_data_type<Real>::value,
-                dev_a.get(), N,
+                a.get(), N,
                 &workspace_device, &workspace_host);
             if (status != CUSOLVER_STATUS_SUCCESS)
                 cusolver_error("cusolverDnXtrtri_bufferSize", status);
@@ -134,20 +176,50 @@ namespace
 
             status = cusolverDnXtrtri(handle, uplo, diag, N,
                 cuda_data_type<Real>::value,
-                dev_a.get(), N,
+                a.get(), N,
                 dev_work.get(), workspace_device,
                 host_work.get(), workspace_host,
                 dev_info.get());
             if (status != CUSOLVER_STATUS_SUCCESS)
                 cusolver_error("cusolverDnXtrtri", status);
-            cudaDeviceSynchronize();
 
-            smp.do_sample();
-
-            util::copy(dev_a, dev_a.size(), a.begin());
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11040
+
+        template<typename Real>
+        int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+        {
+            // upper triangular in column-major is lower triangular in row-major
+            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
+            {
+                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                    for (auto entry = it; entry < it + nnz; entry++)
+                        *entry = gen();
+            };
+
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+
+            util::buffer<Real> a{ N * N };
+            std::fill(a.begin(), a.end(), Real{});
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
+
+            smp.do_sample();
+
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            int info = trtri_compute(handle, N, dev_a);
+
+            util::copy(dev_a, dev_a.size(), a.begin());
+            return info;
+        }
+
+    #if CUDART_VERSION < 11010
+
+        DEFINE_CALL(getrf);
 
         template<typename Real>
         int getrf_compute(
@@ -155,7 +227,38 @@ namespace
             std::size_t M,
             std::size_t N,
             util::device_buffer<Real>& a,
-            util::device_buffer<std::int64_t>& ipiv)
+            util::device_buffer<index_type>& ipiv)
+        {
+            using call = getrf_call<Real>;
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+            int lwork;
+            auto status = call::query(handle, M, N, a.get(), M, &lwork);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::query_str, status);
+
+            smp.do_sample();
+
+            util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+
+            status = call::compute(
+                handle, M, N, a.get(), M, dev_work.get(), ipiv.get(), dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
+        template<typename Real>
+        int getrf_compute(
+            cusolverdn_handle& handle,
+            std::size_t M,
+            std::size_t N,
+            util::device_buffer<Real>& a,
+            util::device_buffer<index_type>& ipiv)
         {
             tp::sampler smp(g_tpr);
 
@@ -193,6 +296,23 @@ namespace
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11010
+
+    #if CUDART_VERSION < 11010
+        template<typename>
+        struct getrs_call {};
+        template<>
+        struct getrs_call<float>
+        {
+            static constexpr auto compute = cusolverDnSgetrs;
+            static constexpr const char compute_str[] = "cusolverDnSgetrs";
+        };
+        template<>
+        struct getrs_call<double>
+        {
+            static constexpr auto compute = cusolverDnDgetrs;
+            static constexpr const char compute_str[] = "cusolverDnDgetrs";
+        };
 
         template<typename Real>
         int getrs_compute(
@@ -200,7 +320,31 @@ namespace
             std::size_t N,
             std::size_t Nrhs,
             const util::device_buffer<Real>& a,
-            const util::device_buffer<std::int64_t>& ipiv,
+            const util::device_buffer<index_type>& ipiv,
+            util::device_buffer<Real>& b)
+        {
+            constexpr cublasOperation_t op = CUBLAS_OP_N;
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            auto status = getrs_call<Real>::compute(
+                handle, op, N, Nrhs, a.get(), N, ipiv.get(), b.get(), N, dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(getrs_call<Real>::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
+        template<typename Real>
+        int getrs_compute(
+            cusolverdn_handle& handle,
+            std::size_t N,
+            std::size_t Nrhs,
+            const util::device_buffer<Real>& a,
+            const util::device_buffer<index_type>& ipiv,
             util::device_buffer<Real>& b)
         {
             constexpr cublasOperation_t op = CUBLAS_OP_N;
@@ -222,6 +366,7 @@ namespace
             util::copy(dev_info, 1, &info);
             return info;
         }
+    #endif // CUDART_VERSION < 11010
 
         template<typename Real>
         int getrf_impl(
@@ -233,13 +378,13 @@ namespace
             tp::sampler smp(g_tpr);
 
             util::buffer<Real> a{ M * N };
-            util::buffer<std::int64_t> ipiv{ std::min(M, N) };
+            util::buffer<index_type> ipiv{ std::min(M, N) };
             std::generate(a.begin(), a.end(), gen);
 
             smp.do_sample();
 
             util::device_buffer dev_a{ a.begin(), a.end() };
-            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+            util::device_buffer<index_type> dev_ipiv{ ipiv.size() };
 
             int info = getrf_compute(handle, M, N, dev_a, dev_ipiv);
 
@@ -259,7 +404,7 @@ namespace
 
             util::buffer<Real> a{ N * N };
             util::buffer<Real> b{ N * Nrhs };
-            util::buffer<std::int64_t> ipiv{ N };
+            util::buffer<index_type> ipiv{ N };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
@@ -267,7 +412,7 @@ namespace
 
             util::device_buffer dev_a{ a.begin(), a.end() };
             util::device_buffer dev_b{ b.begin(), b.end() };
-            util::device_buffer<std::int64_t> dev_ipiv{ ipiv.size() };
+            util::device_buffer<index_type> dev_ipiv{ ipiv.size() };
 
             int info = getrf_compute(handle, N, N, dev_a, dev_ipiv);
             if (info)
@@ -282,6 +427,13 @@ namespace
             return info;
         }
 
+    #if CUDART_VERSION < 10020
+        template<typename Real>
+        int gesv_impl(cusolverdn_handle&, std::size_t, std::size_t, std::mt19937_64&)
+        {
+            throw std::runtime_error(unsupported_version("cusolverDn<t1><t2>gesv()", "10.2"));
+        }
+    #else
         template<typename Real>
         int gesv_impl(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -343,7 +495,15 @@ namespace
             util::copy(dev_a, dev_a.size(), a.begin());
             return info;
         }
+    #endif // CUDART_VERSION < 10020
 
+    #if CUDART_VERSION < 11000
+        template<typename Real>
+        int gels_impl(cusolverdn_handle&, std::size_t, std::size_t, std::size_t, std::mt19937_64&)
+        {
+            throw std::runtime_error(unsupported_version("cusolverDn<t1><t2>gels()", "11.0"));
+        }
+    #else
         template<typename Real>
         int gels_impl(
             cusolverdn_handle& handle, std::size_t M, std::size_t N,
@@ -403,6 +563,7 @@ namespace
             util::copy(dev_a, dev_a.size(), a.begin());
             return info;
         }
+    #endif // CUDART_VERSION < 11000
     }
 
     __attribute__((noinline))
@@ -488,7 +649,7 @@ namespace
             dgels,
             sgels,
         };
-    };
+    }
 
     struct cmdargs
     {
