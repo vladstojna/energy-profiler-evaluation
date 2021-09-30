@@ -2,10 +2,6 @@
 
 <config>
 
-    <params>
-        <domain_mask>0xb</domain_mask>
-    </params>
-
     <sections>
         <section target="cpu">
             <bounds>
@@ -16,4 +12,5 @@
             <interval>100</interval>
         </section>
     </sections>
+
 </config>

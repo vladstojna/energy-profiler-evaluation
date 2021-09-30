@@ -2,10 +2,6 @@
 
 <config>
 
-    <params>
-        <domain_mask>0xb</domain_mask>
-    </params>
-
     <sections>
 
         <section target="cpu" label="generate_host_double_precision">
