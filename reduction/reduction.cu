@@ -62,6 +62,20 @@ namespace
         real64,
     };
 
+    struct host_placement
+    {
+        template<typename T>
+        using container = thrust::host_vector<T>;
+        static constexpr auto policy = thrust::host;
+    };
+
+    struct device_placement
+    {
+        template<typename T>
+        using container = thrust::device_vector<T>;
+        static constexpr auto policy = thrust::device;
+    };
+
     template<typename T>
     struct sum
     {
@@ -112,9 +126,15 @@ namespace
 
     struct greater_than_threshold
     {
+        __host__ __device__ bool operator()(const std::int32_t& x) { return call_impl(x); }
+        __host__ __device__ bool operator()(const std::int64_t& x) { return call_impl(x); }
+        __host__ __device__ bool operator()(const float& x) { return call_impl(x); }
+        __host__ __device__ bool operator()(const double& x) { return call_impl(x); }
+
+    private:
         template<typename T>
         __host__ __device__
-            bool operator()(const T& x)
+            bool call_impl(const T& x)
         {
             return x >= element_traits<T>::count_threshold;
         }
@@ -130,7 +150,7 @@ namespace
 
         arguments(int argc, const char* const* argv)
         {
-            if (argc < 5)
+            if (argc < 6)
             {
                 print_usage(argv[0]);
                 throw std::invalid_argument("Not enough arguments");
@@ -229,9 +249,9 @@ namespace
         return vec;
     }
 
-    template<typename BinaryOp>
-    __attribute__((noinline)) typename BinaryOp::value_type reduce_host_work(
-        const thrust::host_vector<typename BinaryOp::value_type>& vec,
+    template<typename Placement, typename BinaryOp>
+    __attribute__((noinline)) typename BinaryOp::value_type reduce_work(
+        const typename Placement::container<typename BinaryOp::value_type>& vec,
         std::size_t iters)
     {
         using value_type = typename BinaryOp::value_type;
@@ -239,156 +259,210 @@ namespace
         (void)smp;
         thrust::host_vector<value_type> results(iters);
         for (std::size_t i = 0; i < iters; i++)
-        {
             results[i] = thrust::reduce(
-                thrust::host,
+                Placement::policy,
                 std::begin(vec),
                 std::end(vec),
                 BinaryOp::init_value,
                 typename BinaryOp::functor{});
-        }
         return results.front();
     }
 
-    template<typename T>
-    __attribute__((noinline)) T count_if_host_work(
-        const thrust::host_vector<T>& vec,
+    template<typename Placement, typename T>
+    __attribute__((noinline)) T count_if_work(
+        const typename Placement::container<T>& vec,
         std::size_t iters)
     {
         tp::sampler smp(g_tpr);
         (void)smp;
         thrust::host_vector<T> results(iters);
         for (std::size_t i = 0; i < iters; i++)
-        {
             results[i] = thrust::count_if(
-                thrust::host,
+                Placement::policy,
                 std::begin(vec),
                 std::end(vec),
                 greater_than_threshold{});
-        }
         return results.front();
     }
 
-    template<typename T>
-    __attribute__((noinline)) T max_element_host_work(
-        const thrust::host_vector<T>& vec,
+    template<typename Placement, typename T>
+    __attribute__((noinline)) T max_element_work(
+        const typename Placement::container<T>& vec,
         std::size_t iters)
     {
         tp::sampler smp(g_tpr);
         (void)smp;
         thrust::host_vector<T> results(iters);
         for (std::size_t i = 0; i < iters; i++)
-            results[i] = *thrust::max_element(thrust::host, std::begin(vec), std::end(vec));
+            results[i] = *thrust::max_element(
+                Placement::policy, std::begin(vec), std::end(vec));
         return results.front();
     }
 
-    template<typename T>
-    __attribute__((noinline)) T min_element_host_work(
-        const thrust::host_vector<T>& vec,
+    template<typename Placement, typename T>
+    __attribute__((noinline)) T min_element_work(
+        const typename Placement::container<T>& vec,
         std::size_t iters)
     {
         tp::sampler smp(g_tpr);
         (void)smp;
         thrust::host_vector<T> results(iters);
         for (std::size_t i = 0; i < iters; i++)
-            results[i] = *thrust::min_element(thrust::host, std::begin(vec), std::end(vec));
+            results[i] = *thrust::min_element(
+                Placement::policy, std::begin(vec), std::end(vec));
         return results.front();
     }
 
     template<typename BinaryOp>
-    __attribute__((noinline)) typename BinaryOp::value_type reduce(
+    __attribute__((noinline)) typename BinaryOp::value_type reduce_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
     {
         auto vec = random_vector<typename BinaryOp::value_type>(n, engine);
-        return reduce_host_work<BinaryOp>(vec, iters);
+        return reduce_work<host_placement, BinaryOp>(vec, iters);
+    }
+
+    template<typename BinaryOp>
+    __attribute__((noinline)) typename BinaryOp::value_type reduce_device(
+        std::size_t n,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        auto vec = random_vector<typename BinaryOp::value_type>(n, engine);
+        thrust::device_vector<typename BinaryOp::value_type> d_vec = vec;
+        return reduce_work<device_placement, BinaryOp>(d_vec, iters);
     }
 
     template<typename T>
-    __attribute__((noinline)) T count_if(
+    __attribute__((noinline)) T count_if_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
     {
         auto vec = random_vector<T>(n, engine);
-        return count_if_host_work(vec, iters);
+        return count_if_work<host_placement>(vec, iters);
     }
 
     template<typename T>
-    __attribute__((noinline)) T max_element(
+    __attribute__((noinline)) T count_if_device(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
     {
         auto vec = random_vector<T>(n, engine);
-        return max_element_host_work(vec, iters);
+        thrust::device_vector<T> d_vec = vec;
+        return count_if_work<device_placement>(d_vec, iters);
     }
 
     template<typename T>
-    __attribute__((noinline)) T min_element(
+    __attribute__((noinline)) T max_element_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
     {
         auto vec = random_vector<T>(n, engine);
-        return min_element_host_work(vec, iters);
+        return max_element_work<host_placement>(vec, iters);
+    }
+
+    template<typename T>
+    __attribute__((noinline)) T max_element_device(
+        std::size_t n,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        auto vec = random_vector<T>(n, engine);
+        thrust::device_vector<T> d_vec = vec;
+        return max_element_work<device_placement>(d_vec, iters);
+    }
+
+    template<typename T>
+    __attribute__((noinline)) T min_element_host(
+        std::size_t n,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        auto vec = random_vector<T>(n, engine);
+        return min_element_work<host_placement>(vec, iters);
+    }
+
+    template<typename T>
+    __attribute__((noinline)) T min_element_device(
+        std::size_t n,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        auto vec = random_vector<T>(n, engine);
+        thrust::device_vector<T> d_vec = vec;
+        return min_element_work<device_placement>(d_vec, iters);
     }
 
     void dispatch_work(const arguments& args, std::mt19937_64& engine)
     {
-        using real32_t = float;
-        using real64_t = double;
-    #define DISPATCH_REDUCE(type, op_type) \
+    #define DISPATCH_ALL_TYPES(macro) \
+        macro(int32); \
+        macro(int64); \
+        macro(real32); \
+        macro(real64)
+
+    #define DISPATCH_REDUCE(place, type, op_type) \
         do { \
-            if (args.etype == element_type::type && args.op == operation::op_type) \
+            if (args.where == placement::place && \
+                args.etype == element_type::type && \
+                args.op == operation::op_type) \
             { \
-                std::cerr << #type " " #op_type "\n"; \
-                std::cerr << reduce<op_type<type ## _t>>(args.n, args.iters, engine) << "\n"; \
+                std::cerr << #place " " #type " " #op_type "\n"; \
+                std::cerr << reduce_ ##place<op_type<type ## _t>>(args.n, args.iters, engine) << "\n"; \
                 return; \
             } \
         } while (false)
 
     #define DISPATCH_REDUCE_ALL(type) \
-        DISPATCH_REDUCE(type, sum); \
-        DISPATCH_REDUCE(type, mult)
+        DISPATCH_REDUCE(host, type, sum); \
+        DISPATCH_REDUCE(host, type, mult); \
+        DISPATCH_REDUCE(device, type, sum); \
+        DISPATCH_REDUCE(device, type, mult)
 
-    #define DISPATCH_COUNT_IF(type) \
+    #define DISPATCH_COUNT_IF(place, type) \
         do { \
-            if (args.etype == element_type::type && args.op == operation::count_if) \
+            if (args.where == placement::place && \
+                args.etype == element_type::type && \
+                args.op == operation::count_if) \
             { \
-                std::cerr << #type " count_if\n"; \
-                std::cerr << count_if<type ## _t>(args.n, args.iters, engine) << "\n"; \
+                std::cerr << #place " " #type " count_if\n"; \
+                std::cerr << count_if_ ##place<type ## _t>(args.n, args.iters, engine) << "\n"; \
                 return; \
             } \
         } while (false)
 
-    #define DISPATCH_EXTREMA(type, op_type) \
+    #define DISPATCH_COUNT_IF_ALL(type) \
+        DISPATCH_COUNT_IF(host, type); \
+        DISPATCH_COUNT_IF(device, type)
+
+    #define DISPATCH_EXTREMA(place, type, op_type) \
         do { \
-            if (args.etype == element_type::type && args.op == operation::op_type) \
+            if (args.where == placement::place && \
+                args.etype == element_type::type && \
+                args.op == operation::op_type) \
             { \
-                std::cerr << #type " " #op_type "\n"; \
-                std::cerr << op_type ## _element<type ## _t>(args.n, args.iters, engine) << "\n"; \
+                std::cerr << #place " " #type " " #op_type "\n"; \
+                std::cerr << op_type ## _element_ ##place<type ## _t>(args.n, args.iters, engine) \
+                    << "\n"; \
                 return; \
             } \
         } while (false)
 
     #define DISPATCH_EXTREMA_ALL(type) \
-        DISPATCH_EXTREMA(type, max); \
-        DISPATCH_EXTREMA(type, min)
+        DISPATCH_EXTREMA(host, type, max); \
+        DISPATCH_EXTREMA(host, type, min); \
+        DISPATCH_EXTREMA(device, type, max); \
+        DISPATCH_EXTREMA(device, type, min)
 
-        DISPATCH_REDUCE_ALL(int32);
-        DISPATCH_REDUCE_ALL(int64);
-        DISPATCH_REDUCE_ALL(real32);
-        DISPATCH_REDUCE_ALL(real64);
-        DISPATCH_COUNT_IF(int32);
-        DISPATCH_COUNT_IF(int64);
-        DISPATCH_COUNT_IF(real32);
-        DISPATCH_COUNT_IF(real64);
-        DISPATCH_EXTREMA_ALL(int32);
-        DISPATCH_EXTREMA_ALL(int64);
-        DISPATCH_EXTREMA_ALL(real32);
-        DISPATCH_EXTREMA_ALL(real64);
+        using real32_t = float;
+        using real64_t = double;
+        DISPATCH_ALL_TYPES(DISPATCH_REDUCE_ALL);
+        DISPATCH_ALL_TYPES(DISPATCH_COUNT_IF_ALL);
+        DISPATCH_ALL_TYPES(DISPATCH_EXTREMA_ALL);
         throw std::runtime_error("unable to dispatch work");
     }
 }
