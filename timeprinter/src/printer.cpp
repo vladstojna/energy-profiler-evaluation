@@ -7,7 +7,11 @@
 
 namespace tp
 {
+#ifdef TP_USE_SYSTEM_CLOCK
+    using time_point = std::chrono::time_point<std::chrono::system_clock>;
+#else
     using time_point = std::chrono::time_point<std::chrono::steady_clock>;
+#endif
 
     struct printer::impl
     {
