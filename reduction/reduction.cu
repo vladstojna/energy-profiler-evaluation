@@ -110,6 +110,16 @@ namespace
             (dist_traits::lower + dist_traits::upper) / 2;
     };
 
+    struct greater_than_threshold
+    {
+        template<typename T>
+        __host__ __device__
+            bool operator()(const T& x)
+        {
+            return x >= element_traits<T>::count_threshold;
+        }
+    };
+
     struct arguments
     {
         placement where = placement::host;
@@ -254,10 +264,7 @@ namespace
                 thrust::host,
                 std::begin(vec),
                 std::end(vec),
-                [](const T& x)
-                {
-                    return x >= element_traits<T>::count_threshold;
-                });
+                greater_than_threshold{});
         }
         return results.front();
     }
