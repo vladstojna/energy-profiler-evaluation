@@ -9,10 +9,16 @@ src    := $(wildcard src/*.cpp)
 obj    := $(patsubst $(src_dir)/%.cpp, $(obj_dir)/%.o, $(src))
 deps   := $(patsubst $(src_dir)/%.cpp, $(dep_dir)/%.d, $(src))
 
+system_clock ?=
+ifdef system_clock
+cpp := TP_USE_SYSTEM_CLOCK
+endif
+
 cc      := g++
-cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE -pthread
+cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIC -pthread
 cflags  += -std=c++17
 cflags  += $(addprefix -I, $(incl_dir))
+cflags  += $(addprefix -D, $(cpp))
 
 ldflags += -pthread -shared
 
