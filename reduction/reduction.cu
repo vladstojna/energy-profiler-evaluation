@@ -224,7 +224,7 @@ namespace
         {
             std::cerr << "Usage: " << prog
                 << " <host|device> <operation> <type> <n> <iters>\n";
-            std::cerr << "\toperation: sum | max | min | count | count_if\n";
+            std::cerr << "\toperation: sum | mult | min | max | count_if\n";
             std::cerr << "\ttype: i32 | i64 | r32 | r64\n";
         }
     };
