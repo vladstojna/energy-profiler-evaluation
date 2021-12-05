@@ -35,18 +35,36 @@ namespace util
     // if C++ is older than 17 then implement conversion for all supported scalar types
     namespace detail
     {
+        template<typename T>
+        struct conversion_func {};
+        template<>
+        struct conversion_func<float>
+        {
+            static constexpr auto func = std::strtof;
+        };
+        template<>
+        struct conversion_func<double>
+        {
+            static constexpr auto func = std::strtod;
+        };
+        template<>
+        struct conversion_func<long double>
+        {
+            static constexpr auto func = std::strtold;
+        };
+
     #if __cplusplus >= 201703L
         // In C++17 and later std::string_view is passed which is not guaranteed to be
         // null-terminated, thus a temporary copy is necessary since C standard
         // scalar conversion functions expect a null-terminated string
-        template<typename Real, typename Func>
-        void to_scalar_impl(std::string_view str, Real& value, Func func)
+        template<typename Real>
+        void to_scalar_impl(std::string_view str, Real& value)
         {
             std::string tmp(str);
             std::locale loc;
             std::locale::global(std::locale::classic());
             errno = 0;
-            Real val = func(tmp.c_str(), nullptr);
+            Real val = conversion_func<Real>::func(tmp.c_str(), nullptr);
             if (errno)
             {
                 std::locale::global(loc);
@@ -67,13 +85,49 @@ namespace util
             std::conditional<bool(T::value), conjunction<Rest...>, T>::type
         {};
 
-        template<typename Scalar, typename Func, typename... Args>
-        void to_scalar_impl(const char* str, Scalar& value, Func func, Args... args)
+        struct conv_long
+        {
+            using rettype = long;
+            static constexpr auto func = std::strtol;
+        };
+
+        struct conv_ulong
+        {
+            using rettype = unsigned long;
+            static constexpr auto func = std::strtoul;
+        };
+
+        template<> struct conversion_func<char> : conv_long {};
+        template<> struct conversion_func<short> : conv_long {};
+        template<> struct conversion_func<int> : conv_long {};
+        template<> struct conversion_func<unsigned char> : conv_ulong {};
+        template<> struct conversion_func<unsigned short> : conv_ulong {};
+        template<> struct conversion_func<unsigned int> : conv_ulong {};
+
+        template<> struct conversion_func<long>
+        {
+            static constexpr auto func = std::strtol;
+        };
+        template<> struct conversion_func<unsigned long>
+        {
+            static constexpr auto func = std::strtoul;
+        };
+        template<> struct conversion_func<long long>
+        {
+            static constexpr auto func = std::strtoll;
+        };
+        template<> struct conversion_func<unsigned long long>
+        {
+            static constexpr auto func = std::strtoull;
+        };
+
+        template<typename Scalar, typename... Args>
+        void to_scalar_impl(const char* str, Scalar& value, Args... args)
         {
             std::locale loc;
             std::locale::global(std::locale::classic());
             errno = 0;
-            Scalar val = func(str, nullptr, args...);
+            Scalar val = conversion_func<Scalar>::func(str, nullptr, args...);
             if (errno)
             {
                 std::locale::global(loc);
@@ -105,16 +159,15 @@ namespace util
             return x <= std::numeric_limits<SmallerInt>::max();
         }
 
-        template<typename BiggerInt, typename SmallerInt, typename Func, typename... Args>
-        void to_scalar_impl_overflow(
-            const char* str, SmallerInt& value, Func func, Args... args)
+        template<typename Integer, typename... Args>
+        void to_scalar_impl_overflow(const char* str, Integer& value, Args... args)
         {
-            BiggerInt tmp;
-            to_scalar_impl(str, tmp, func, args...);
-            if (!is_in_range<SmallerInt>(tmp))
+            typename conversion_func<Integer>::rettype tmp;
+            to_scalar_impl(str, tmp, args...);
+            if (!is_in_range<Integer>(tmp))
                 throw std::system_error(
                     std::error_code(static_cast<int>(ERANGE), std::generic_category()));
-            SmallerInt smaller = tmp;
+            Integer smaller = tmp;
             value = smaller;
         }
     #endif // __cplusplus >= 201703L
@@ -124,90 +177,55 @@ namespace util
     template<>
     void to_scalar(std::string_view str, float& value)
     {
-        detail::to_scalar_impl(str, value, std::strtof);
+        detail::to_scalar_impl(str, value);
     }
 
     template<>
     void to_scalar(std::string_view str, double& value)
     {
-        detail::to_scalar_impl(str, value, std::strtod);
+        detail::to_scalar_impl(str, value);
     }
 
     template<>
     void to_scalar(std::string_view str, long double& value)
     {
-        detail::to_scalar_impl(str, value, std::strtold);
+        detail::to_scalar_impl(str, value);
     }
 #else
-    void to_scalar(const char* str, float& value)
+    template<typename T, typename std::enable_if<std::is_floating_point<T>::value, bool>::type = true>
+    void to_scalar(const char* str, T& value)
     {
-        detail::to_scalar_impl(str, value, std::strtof);
+        detail::to_scalar_impl(str, value);
     }
 
-    void to_scalar(const char* str, double& value)
+    template<typename T, typename std::enable_if<!std::is_floating_point<T>::value, bool>::type = true>
+    void to_scalar(const char* str, T& value)
     {
-        detail::to_scalar_impl(str, value, std::strtod);
+        detail::to_scalar_impl_overflow(str, value, 10);
     }
 
-    void to_scalar(const char* str, long double& value)
-    {
-        detail::to_scalar_impl(str, value, std::strtold);
-    }
-
-    void to_scalar(const char* str, char& value)
-    {
-        detail::to_scalar_impl_overflow<long>(
-            str, value, std::strtol, 10);
-    }
-
-    void to_scalar(const char* str, short& value)
-    {
-        detail::to_scalar_impl_overflow<long>(
-            str, value, std::strtol, 10);
-    }
-
-    void to_scalar(const char* str, int& value)
-    {
-        detail::to_scalar_impl_overflow<long>(
-            str, value, std::strtol, 10);
-    }
-
+    template<>
     void to_scalar(const char* str, long& value)
     {
-        detail::to_scalar_impl(str, value, std::strtol, 10);
+        detail::to_scalar_impl(str, value, 10);
     }
 
-    void to_scalar(const char* str, long long& value)
-    {
-        detail::to_scalar_impl(str, value, std::strtoll, 10);
-    }
-
-    void to_scalar(const char* str, unsigned char& value)
-    {
-        detail::to_scalar_impl_overflow<unsigned long>(
-            str, value, std::strtoul, 10);
-    }
-
-    void to_scalar(const char* str, unsigned short& value)
-    {
-        detail::to_scalar_impl_overflow<unsigned long>(
-            str, value, std::strtoul, 10);
-    }
-
-    void to_scalar(const char* str, unsigned int& value)
-    {
-        detail::to_scalar_impl_overflow<unsigned long>(
-            str, value, std::strtoul, 10);
-    }
-
+    template<>
     void to_scalar(const char* str, unsigned long& value)
     {
-        detail::to_scalar_impl(str, value, std::strtoul, 10);
+        detail::to_scalar_impl(str, value, 10);
     }
 
+    template<>
+    void to_scalar(const char* str, long long& value)
+    {
+        detail::to_scalar_impl(str, value, 10);
+    }
+
+    template<>
     void to_scalar(const char* str, unsigned long long& value)
     {
-        detail::to_scalar_impl(str, value, std::strtoull, 10);
+        detail::to_scalar_impl(str, value, 10);
     }
 #endif // __cplusplus >= 201703L
 #endif // __GNUC__ < 11
