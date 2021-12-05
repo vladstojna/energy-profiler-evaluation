@@ -11,7 +11,7 @@
 #endif // __GNUC__ < 11 || __cplusplus < 201703L
 
 #if __cplusplus < 201703L
-#include <numeric>
+#include <limits>
 #include <type_traits>
 #endif // __cplusplus < 201703L
 
@@ -63,7 +63,7 @@ namespace util
         struct conjunction<T> : T {};
         template<typename T, typename... Rest>
         struct conjunction<T, Rest...> :
-            std::conditional_t<bool(T::value), conjunction<Rest...>, T>
+            std::conditional<bool(T::value), conjunction<Rest...>, T>::type
         {};
 
         template<typename Scalar, typename Func, typename... Args>
@@ -86,8 +86,9 @@ namespace util
         template<
             typename SmallerInt,
             typename BiggerInt,
-            std::enable_if_t<conjunction<std::is_signed<SmallerInt>, std::is_signed<BiggerInt>>::value, bool> = true
-        > bool is_in_range(BiggerInt x)
+            typename std::enable_if<conjunction<
+            std::is_signed<SmallerInt>, std::is_signed<BiggerInt>>::value, bool>::type = true>
+            bool is_in_range(BiggerInt x)
         {
             return x >= std::numeric_limits<SmallerInt>::min()
                 && x <= std::numeric_limits<SmallerInt>::max();
@@ -96,8 +97,9 @@ namespace util
         template<
             typename SmallerInt,
             typename BiggerInt,
-            std::enable_if_t<conjunction<std::is_unsigned<SmallerInt>, std::is_unsigned<BiggerInt>>::value, bool> = true
-        > bool is_in_range(BiggerInt x)
+            typename std::enable_if<conjunction<
+            std::is_unsigned<SmallerInt>, std::is_unsigned<BiggerInt>>::value, bool>::type = true>
+            bool is_in_range(BiggerInt x)
         {
             return x <= std::numeric_limits<SmallerInt>::max();
         }
@@ -115,7 +117,7 @@ namespace util
             value = smaller;
         }
     #endif // __cplusplus >= 201703L
-        }
+    }
 
 #if __cplusplus >= 201703L
     template<>
@@ -226,4 +228,4 @@ namespace util
         return value;
     }
 #endif // __cplusplus >= 201703L
-    }
+}
