@@ -17,12 +17,6 @@
 
 namespace util
 {
-    // #if __cplusplus >= 201703L
-    //     using string_view = std::string_view;
-    // #else
-    //     using string_view = const char*;
-    // #endif
-
 #if __cplusplus >= 201703L
     // std::from_chars is only available in C++17 and later
     template<typename T>
@@ -121,7 +115,7 @@ namespace util
             value = smaller;
         }
     #endif // __cplusplus >= 201703L
-    }
+        }
 
 #if __cplusplus >= 201703L
     template<>
@@ -232,4 +226,4 @@ namespace util
         return value;
     }
 #endif // __cplusplus >= 201703L
-}
+    }
