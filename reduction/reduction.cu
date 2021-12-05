@@ -65,15 +65,18 @@ namespace
     {
         template<typename T>
         using container = thrust::host_vector<T>;
-        static constexpr auto policy = thrust::host;
+        static const decltype(thrust::host) policy;
     };
 
     struct device_placement
     {
         template<typename T>
         using container = thrust::device_vector<T>;
-        static constexpr auto policy = thrust::device;
+        static const decltype(thrust::device) policy;
     };
+
+    decltype(host_placement::policy) host_placement::policy = thrust::host;
+    decltype(device_placement::policy) device_placement::policy = thrust::device;
 
     template<typename T>
     struct sum
