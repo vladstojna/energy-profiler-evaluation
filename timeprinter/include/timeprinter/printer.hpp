@@ -2,8 +2,16 @@
 
 #include <chrono>
 #include <memory>
-#include <optional>
 #include <iostream>
+
+#if __cplusplus < 201402L
+#error "C++14 or better is required"
+#endif
+
+#if __cplusplus >= 201703L
+#include <optional>
+#include <string_view>
+#endif
 
 namespace tp
 {
@@ -11,7 +19,25 @@ namespace tp
     {
         std::chrono::nanoseconds interval;
         std::size_t initial_size = 2;
+
+    #if __cplusplus < 201703L
+        explicit operator bool() const
+        {
+            return interval.count() && initial_size;
+        }
+    #endif
     };
+
+#if __cplusplus >= 201703L
+    using context_type = std::string_view;
+    using opt_period_data = std::optional<period_data>;
+    static constexpr auto no_period = std::nullopt;
+#else
+    using context_type = const char*;
+    using opt_period_data = period_data;
+    static constexpr auto no_period =
+        opt_period_data{ std::chrono::nanoseconds{}, {} };
+#endif
 
     class printer
     {
@@ -19,9 +45,9 @@ namespace tp
         struct impl;
 
         printer(std::ostream & = std::cout);
-        printer(const std::optional<period_data>&, std::ostream & = std::cout);
-        printer(std::string_view, std::ostream & = std::cout);
-        printer(std::string_view, const std::optional<period_data>&, std::ostream & = std::cout);
+        printer(const opt_period_data&, std::ostream & = std::cout);
+        printer(context_type, std::ostream & = std::cout);
+        printer(context_type, const opt_period_data&, std::ostream & = std::cout);
 
         ~printer();
 
