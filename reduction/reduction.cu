@@ -11,7 +11,6 @@
 
 #include <cassert>
 #include <random>
-#include <string_view>
 #include <vector>
 
 namespace
@@ -169,18 +168,16 @@ namespace
         }
 
     private:
-        std::string lowercase(std::string_view str)
+        std::string lowercase(const char* str)
         {
             std::string lower(str);
-            std::transform(lower.begin(), lower.end(), lower.begin(),
-                [](unsigned char c)
-                {
-                    return std::tolower(c);
-                });
+            auto tolower = [](unsigned char c) { return std::tolower(c); };
+            for (char& c : lower)
+                c = tolower(c);
             return lower;
         }
 
-        placement get_placement(std::string_view arg)
+        placement get_placement(const char* arg)
         {
             std::string lower = lowercase(arg);
             if (lower == "host")
@@ -190,7 +187,7 @@ namespace
             throw std::invalid_argument("invalid placement");
         }
 
-        operation get_operation(std::string_view arg)
+        operation get_operation(const char* arg)
         {
             std::string lower = lowercase(arg);
             if (lower == "sum")
@@ -206,7 +203,7 @@ namespace
             throw std::invalid_argument("invalid operation");
         }
 
-        element_type get_element_type(std::string_view arg)
+        element_type get_element_type(const char* arg)
         {
             std::string lower = lowercase(arg);
             if (lower == "i32")
@@ -241,11 +238,8 @@ namespace
             traits::dist_traits::lower, traits::dist_traits::upper
         };
         thrust::host_vector<typename traits::value_type> vec(n);
-        std::generate(vec.begin(), vec.end(),
-            [&]()
-            {
-                return dist(engine);
-            });
+        for (typename traits::value_type& val : vec)
+            val = dist(engine);
         return vec;
     }
 
