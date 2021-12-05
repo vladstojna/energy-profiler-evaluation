@@ -5,7 +5,7 @@ dep_dir  := $(obj_dir)/.deps
 tgt_dir  := lib
 
 std ?= c++17
-obj_suffix := $(if $(filter c++17,$(strip $(std))),,.$(strip std))
+obj_suffix := $(if $(filter c++17,$(strip $(std))),,.$(strip $(std)))
 
 supported_stds := c++14 c++17
 ifeq (,$(findstring $(strip $(std)),$(supported_stds)))
