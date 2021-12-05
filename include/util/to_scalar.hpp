@@ -3,6 +3,7 @@
 #if __cplusplus >= 201703L
 #include <charconv>
 #include <string_view>
+#include <system_error>
 #endif // __cplusplus >= 201703L
 
 #if __GNUC__ < 11 || __cplusplus < 201703L
