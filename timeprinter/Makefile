@@ -5,7 +5,12 @@ dep_dir  := $(obj_dir)/.deps
 tgt_dir  := lib
 
 std ?= c++17
-obj_suffix := $(if $(filter c++17,$(strip $(std))),,.$(std))
+obj_suffix := $(if $(filter c++17,$(strip $(std))),,.$(strip std))
+
+supported_stds := c++14 c++17
+ifeq (,$(findstring $(strip $(std)),$(supported_stds)))
+$(error Supported C++ standards: $(supported_stds))
+endif
 
 target := $(tgt_dir)/libtimeprinter$(obj_suffix)
 src    := $(wildcard src/*.cpp)
@@ -19,7 +24,7 @@ endif
 
 cc      := g++
 cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIC -pthread
-cflags  += -std=$(std)
+cflags  += -std=$(strip $(std))
 cflags  += $(addprefix -I, $(incl_dir))
 cflags  += $(addprefix -D, $(cpp))
 
