@@ -4,10 +4,18 @@ obj_dir  := obj
 dep_dir  := $(obj_dir)/.deps
 tgt_dir  := lib
 
-target := $(tgt_dir)/libtimeprinter
+std ?= c++17
+obj_suffix := $(if $(filter c++17,$(strip $(std))),,.$(strip $(std)))
+
+supported_stds := c++14 c++17
+ifeq (,$(findstring $(strip $(std)),$(supported_stds)))
+$(error Supported C++ standards: $(supported_stds))
+endif
+
+target := $(tgt_dir)/libtimeprinter$(obj_suffix)
 src    := $(wildcard src/*.cpp)
-obj    := $(patsubst $(src_dir)/%.cpp, $(obj_dir)/%.o, $(src))
-deps   := $(patsubst $(src_dir)/%.cpp, $(dep_dir)/%.d, $(src))
+obj    := $(patsubst $(src_dir)/%.cpp, $(obj_dir)/%$(obj_suffix).o, $(src))
+deps   := $(patsubst $(src_dir)/%.cpp, $(dep_dir)/%$(obj_suffix).d, $(src))
 
 system_clock ?=
 ifdef system_clock
@@ -16,7 +24,7 @@ endif
 
 cc      := g++
 cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIC -pthread
-cflags  += -std=c++17
+cflags  += -std=$(strip $(std))
 cflags  += $(addprefix -I, $(incl_dir))
 cflags  += $(addprefix -D, $(cpp))
 
@@ -53,8 +61,8 @@ $(target).so: $(obj) | $(tgt_dir)
 $(target).a: $(obj) | $(tgt_dir)
 	$(ar) $(arflags) $@ $^
 
-$(obj_dir)/%.o: $(src_dir)/%.cpp $(dep_dir)/%.d | $(obj_dir) $(dep_dir)
-	$(cc) -MT $@ -MMD -MP -MF $(dep_dir)/$*.d $(cflags) -c -o $@ $<
+$(obj_dir)/%$(obj_suffix).o: $(src_dir)/%.cpp $(dep_dir)/%$(obj_suffix).d | $(obj_dir) $(dep_dir)
+	$(cc) -MT $@ -MMD -MP -MF $(dep_dir)/$*$(obj_suffix).d $(cflags) -c -o $@ $<
 
 $(deps):
 

@@ -18,7 +18,7 @@ namespace tp
         std::ostream& os;
         std::string ctx;
 
-        impl(std::string_view ctx, std::ostream& os) :
+        impl(context_type ctx, std::ostream& os) :
             os(os),
             ctx(ctx)
         {}
@@ -40,7 +40,7 @@ namespace
     {
         std::vector<tp::time_point> samples;
 
-        simple_printer(std::string_view ctx, std::ostream& os) :
+        simple_printer(tp::context_type ctx, std::ostream& os) :
             impl(ctx, os)
         {
             samples.reserve(2);
@@ -73,28 +73,28 @@ namespace
 
         std::vector<tp::time_point> samples;
 
-        periodic_printer(std::string_view ctx, const tp::period_data& data, std::ostream& os) :
+        periodic_printer(tp::context_type ctx, const tp::period_data& data, std::ostream& os) :
             impl(ctx, os),
             finished(false)
         {
             samples.reserve(data.initial_size);
             thread = std::thread(&periodic_printer::thread_func, this, data.interval);
             {
-                std::scoped_lock lk(mtx);
+                std::lock_guard<std::mutex> lk(mtx);
                 samples.push_back(tp::time_point::clock::now());
             }
         };
 
         void sample() override
         {
-            std::scoped_lock lk(mtx);
+            std::lock_guard<std::mutex> lk(mtx);
             samples.push_back(tp::time_point::clock::now());
         }
 
         ~periodic_printer()
         {
             {
-                std::scoped_lock lk(mtx);
+                std::lock_guard<std::mutex> lk(mtx);
                 samples.push_back(tp::time_point::clock::now());
                 finished = true;
             }
@@ -110,7 +110,7 @@ namespace
     private:
         void thread_func(const tp::time_point::duration& interval)
         {
-            std::unique_lock lk(mtx);
+            std::unique_lock<std::mutex> lk(mtx);
             if (finished)
                 return;
             while (true)
@@ -123,13 +123,25 @@ namespace
         }
     };
 
+#if __cplusplus >= 201703L
+    tp::period_data get_period_data(const tp::opt_period_data& pd)
+    {
+        return *pd;
+    }
+#else
+    tp::period_data get_period_data(const tp::opt_period_data& pd)
+    {
+        return pd;
+    }
+#endif
+
     std::unique_ptr<tp::printer::impl> make_printer(
-        std::string_view context,
-        const std::optional<tp::period_data>& periodic,
+        tp::context_type context,
+        const tp::opt_period_data& periodic,
         std::ostream& os)
     {
         if (periodic)
-            return std::make_unique<periodic_printer>(context, *periodic, os);
+            return std::make_unique<periodic_printer>(context, get_period_data(periodic), os);
         else
             return std::make_unique<simple_printer>(context, os);
     }
@@ -138,23 +150,23 @@ namespace
 namespace tp
 {
     printer::printer(
-        std::string_view context,
-        const std::optional<period_data>& periodic,
+        context_type context,
+        const opt_period_data& periodic,
         std::ostream& os)
         :
         _impl(make_printer(context, periodic, os))
     {}
 
-    printer::printer(std::string_view context, std::ostream& os) :
-        printer(context, std::nullopt, os)
+    printer::printer(context_type context, std::ostream& os) :
+        printer(context, no_period, os)
     {}
 
-    printer::printer(const std::optional<period_data>& periodic, std::ostream& os) :
+    printer::printer(const opt_period_data& periodic, std::ostream& os) :
         printer("", periodic, os)
     {}
 
     printer::printer(std::ostream& os) :
-        printer(std::nullopt, os)
+        printer(no_period, os)
     {}
 
     printer::~printer() = default;
