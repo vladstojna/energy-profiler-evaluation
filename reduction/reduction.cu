@@ -8,6 +8,7 @@
 #include <thrust/count.h>
 #include <thrust/reduce.h>
 #include <thrust/extrema.h>
+#include <thrust/inner_product.h>
 
 #include <cassert>
 #include <random>
@@ -51,6 +52,7 @@ namespace
         min,
         max,
         count_if,
+        inner,
     };
 
     enum class element_type
@@ -203,6 +205,8 @@ namespace
                 return operation::max;
             if (lower == "count_if")
                 return operation::count_if;
+            if (lower == "inner")
+                return operation::inner;
             throw std::invalid_argument("invalid operation");
         }
 
@@ -224,7 +228,7 @@ namespace
         {
             std::cerr << "Usage: " << prog
                 << " <host|device> <operation> <type> <n> <iters>\n";
-            std::cerr << "\toperation: sum | mult | min | max | count_if\n";
+            std::cerr << "\toperation: sum | mult | min | max | count_if | inner\n";
             std::cerr << "\ttype: i32 | i64 | r32 | r64\n";
         }
     };
@@ -307,6 +311,24 @@ namespace
         for (std::size_t i = 0; i < iters; i++)
             results[i] = *thrust::min_element(
                 Placement::policy, std::begin(vec), std::end(vec));
+        return results.front();
+    }
+
+    template<typename Placement, typename T>
+    __attribute__((noinline)) T inner_product_work(
+        const typename Placement::container<T>& vec,
+        std::size_t iters)
+    {
+        tp::sampler smp(g_tpr);
+        (void)smp;
+        thrust::host_vector<T> results(iters);
+        for (std::size_t i = 0; i < iters; i++)
+            results[i] = thrust::inner_product(
+                Placement::policy,
+                vec.begin(),
+                vec.end(),
+                vec.begin(),
+                sum<T>::init_value);
         return results.front();
     }
 
@@ -394,6 +416,27 @@ namespace
         return min_element_work<device_placement>(d_vec, iters);
     }
 
+    template<typename T>
+    __attribute__((noinline)) T inner_product_host(
+        std::size_t n,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        auto vec = random_vector<T>(n, engine);
+        return inner_product_work<host_placement>(vec, iters);
+    }
+
+    template<typename T>
+    __attribute__((noinline)) T inner_product_device(
+        std::size_t n,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        auto vec = random_vector<T>(n, engine);
+        thrust::device_vector<T> d_vec = vec;
+        return inner_product_work<device_placement>(d_vec, iters);
+    }
+
     void dispatch_work(const arguments& args, std::mt19937_64& engine)
     {
     #define DISPATCH_ALL_TYPES(macro) \
@@ -455,11 +498,29 @@ namespace
         DISPATCH_EXTREMA(device, type, max); \
         DISPATCH_EXTREMA(device, type, min)
 
+    #define DISPATCH_INNER_PRODUCT(place, type) \
+        do { \
+            if (args.where == placement::place && \
+                args.etype == element_type::type && \
+                args.op == operation::inner) \
+            { \
+                std::cerr << #place " " #type " inner product\n"; \
+                std::cerr << inner_product_ ##place<type ## _t>(args.n, args.iters, engine) << "\n"; \
+                return; \
+            } \
+        } while (false)
+
+    #define DISPATCH_INNER_PRODUCT_ALL(type) \
+        DISPATCH_INNER_PRODUCT(host, type); \
+        DISPATCH_INNER_PRODUCT(device, type)
+
         using real32_t = float;
         using real64_t = double;
         DISPATCH_ALL_TYPES(DISPATCH_REDUCE_ALL);
         DISPATCH_ALL_TYPES(DISPATCH_COUNT_IF_ALL);
         DISPATCH_ALL_TYPES(DISPATCH_EXTREMA_ALL);
+        DISPATCH_ALL_TYPES(DISPATCH_INNER_PRODUCT_ALL);
+        DISPATCH_ALL_TYPES(DISPATCH_INNER_PRODUCT_ALL);
         throw std::runtime_error("unable to dispatch work");
     }
 }
