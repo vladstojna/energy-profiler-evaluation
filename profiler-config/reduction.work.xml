@@ -337,4 +337,71 @@
         </section>
     </sections>
 
+    <sections label="inner_product">
+        <section target="cpu" label="inner_product_host_double">
+            <bounds>
+                <func name="double (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="inner_product_host_float">
+            <bounds>
+                <func name="float (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="inner_product_host_long">
+            <bounds>
+                <func name="long (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="inner_product_host_int">
+            <bounds>
+                <func name="int (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_double">
+            <bounds>
+                <func name="double (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_float">
+            <bounds>
+                <func name="float (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_long">
+            <bounds>
+                <func name="long (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_int">
+            <bounds>
+                <func name="int (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
 </config>
