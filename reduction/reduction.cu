@@ -14,6 +14,8 @@
 #include <random>
 #include <vector>
 
+#define NO_INLINE __attribute__((noinline))
+
 namespace
 {
     tp::printer g_tpr;
@@ -234,7 +236,7 @@ namespace
     };
 
     template<typename T>
-    __attribute__((noinline)) thrust::host_vector<T> random_vector(
+    NO_INLINE thrust::host_vector<T> random_vector(
         std::size_t n,
         std::mt19937_64& engine)
     {
@@ -251,7 +253,7 @@ namespace
     }
 
     template<typename Placement, typename BinaryOp>
-    __attribute__((noinline)) typename BinaryOp::value_type reduce_work(
+    NO_INLINE typename BinaryOp::value_type reduce_work(
         const typename Placement::container<typename BinaryOp::value_type>& vec,
         std::size_t iters)
     {
@@ -270,7 +272,7 @@ namespace
     }
 
     template<typename Placement, typename T>
-    __attribute__((noinline)) T count_if_work(
+    NO_INLINE T count_if_work(
         const typename Placement::container<T>& vec,
         std::size_t iters)
     {
@@ -287,7 +289,7 @@ namespace
     }
 
     template<typename Placement, typename T>
-    __attribute__((noinline)) T max_element_work(
+    NO_INLINE T max_element_work(
         const typename Placement::container<T>& vec,
         std::size_t iters)
     {
@@ -301,7 +303,7 @@ namespace
     }
 
     template<typename Placement, typename T>
-    __attribute__((noinline)) T min_element_work(
+    NO_INLINE T min_element_work(
         const typename Placement::container<T>& vec,
         std::size_t iters)
     {
@@ -315,7 +317,7 @@ namespace
     }
 
     template<typename Placement, typename T>
-    __attribute__((noinline)) T inner_product_work(
+    NO_INLINE T inner_product_work(
         const typename Placement::container<T>& vec,
         std::size_t iters)
     {
@@ -333,7 +335,7 @@ namespace
     }
 
     template<typename BinaryOp>
-    __attribute__((noinline)) typename BinaryOp::value_type reduce_host(
+    NO_INLINE typename BinaryOp::value_type reduce_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -343,7 +345,7 @@ namespace
     }
 
     template<typename BinaryOp>
-    __attribute__((noinline)) typename BinaryOp::value_type reduce_device(
+    NO_INLINE typename BinaryOp::value_type reduce_device(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -354,7 +356,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T count_if_host(
+    NO_INLINE T count_if_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -364,7 +366,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T count_if_device(
+    NO_INLINE T count_if_device(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -375,7 +377,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T max_element_host(
+    NO_INLINE T max_element_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -385,7 +387,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T max_element_device(
+    NO_INLINE T max_element_device(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -396,7 +398,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T min_element_host(
+    NO_INLINE T min_element_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -406,7 +408,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T min_element_device(
+    NO_INLINE T min_element_device(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -417,7 +419,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T inner_product_host(
+    NO_INLINE T inner_product_host(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
@@ -427,7 +429,7 @@ namespace
     }
 
     template<typename T>
-    __attribute__((noinline)) T inner_product_device(
+    NO_INLINE T inner_product_device(
         std::size_t n,
         std::size_t iters,
         std::mt19937_64& engine)
