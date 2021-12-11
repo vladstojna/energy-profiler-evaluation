@@ -45,16 +45,11 @@ namespace
         struct transpose : std::integral_constant<decltype(CblasTrans), CblasTrans> {};
         struct no_transpose : std::integral_constant<decltype(CblasNoTrans), CblasNoTrans> {};
 
-        struct dimensions
-        {
-            std::size_t M;
-            std::size_t N;
-            std::size_t K;
-        };
-
         template<typename Transpose, typename Real>
         NO_INLINE void gemm_compute(
-            dimensions dims,
+            std::size_t M,
+            std::size_t N,
+            std::size_t K,
             const Real* a,
             const Real* b,
             Real* c)
@@ -62,11 +57,7 @@ namespace
             tp::sampler smp(g_tpr);
             gemm_caller<Real>::value(
                 CblasRowMajor, CblasNoTrans, Transpose::value,
-                dims.M, dims.N, dims.K, 1.0,
-                a, dims.K,
-                b, dims.N,
-                0, c, dims.N
-            );
+                M, N, K, 1.0, a, K, b, N, 0, c, N);
         }
 
         template<typename Real, typename Transpose>
@@ -81,7 +72,7 @@ namespace
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-            gemm_compute<Transpose>({ M, N, K }, a.data(), b.data(), c.data());
+            gemm_compute<Transpose>(M, N, K, a.data(), b.data(), c.data());
         }
 
         template<typename Real>
