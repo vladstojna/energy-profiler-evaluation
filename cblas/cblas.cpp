@@ -103,11 +103,15 @@ namespace
         }
     }
 
-    NO_INLINE void dgemm_notrans(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
-    NO_INLINE void dgemm(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
-    NO_INLINE void sgemm_notrans(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
-    NO_INLINE void sgemm(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
-    NO_INLINE void dgemv(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
+#define DECLARE_FUNC(f) \
+    NO_INLINE void f(std::size_t, std::size_t, std::size_t, std::mt19937_64&)
+
+    DECLARE_FUNC(dgemm_notrans);
+    DECLARE_FUNC(dgemm);
+    DECLARE_FUNC(sgemm_notrans);
+    DECLARE_FUNC(sgemm);
+    DECLARE_FUNC(dgemv);
+    DECLARE_FUNC(sgemv);
 
     void dgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
