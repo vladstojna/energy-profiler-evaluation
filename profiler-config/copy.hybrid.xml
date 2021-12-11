@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+    <sections>
+        <section target="cpu,gpu" label="copy">
+            <bounds>
+                <func name="(anonymous namespace)::copy"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+</config>
