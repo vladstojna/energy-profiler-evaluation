@@ -33,6 +33,15 @@ namespace
         template<>
         struct gemm_caller<double> : func_obj<cblas_dgemm> {};
 
+        template<typename>
+        struct gemv_caller {};
+
+        template<>
+        struct gemv_caller<float> : func_obj<cblas_sgemv> {};
+
+        template<>
+        struct gemv_caller<double> : func_obj<cblas_dgemv> {};
+
         struct transpose : std::integral_constant<decltype(CblasTrans), CblasTrans> {};
         struct no_transpose : std::integral_constant<decltype(CblasNoTrans), CblasNoTrans> {};
 
@@ -74,6 +83,33 @@ namespace
             std::generate(b.begin(), b.end(), gen);
             gemm_compute<Transpose>({ M, N, K }, a.data(), b.data(), c.data());
         }
+
+        template<typename Real>
+        NO_INLINE void gemv_compute(
+            std::size_t M,
+            std::size_t N,
+            const Real* a,
+            const Real* x,
+            Real* y)
+        {
+            tp::sampler smp(g_tpr);
+            gemv_caller<Real>::value(
+                CblasRowMajor, CblasNoTrans, M, N, 1.0, a, N, x, 1, 0, y, 1);
+        }
+
+        template<typename Real>
+        void gemv_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a(M * N);
+            std::vector<Real> x(N);
+            std::vector<Real> y(M);
+            std::generate(a.begin(), a.end(), gen);
+            gemv_compute(M, N, a.data(), x.data(), y.data());
+        }
     }
 
     NO_INLINE void dgemm_notrans(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
@@ -104,21 +140,12 @@ namespace
 
     void dgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        std::uniform_real_distribution<double> dist{ 0.0, 1.0 };
-        auto gen = [&]() { return dist(engine); };
+        detail::gemv_impl<double>(M, N, engine);
+    }
 
-        tp::sampler smp(g_tpr);
-        std::vector<double> a(M * N);
-        std::vector<double> x(N);
-        std::vector<double> y(M);
-        std::generate(a.begin(), a.end(), gen);
-
-        smp.do_sample();
-        cblas_dgemv(CblasRowMajor, CblasNoTrans,
-            M, N, 1.0,
-            a.data(), N,
-            x.data(), 1,
-            0, y.data(), 1);
+    void sgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::gemv_impl<float>(M, N, engine);
     }
 
     struct cmdparams
@@ -147,6 +174,8 @@ namespace
             util::to_scalar(argv[3], n);
             if (op_type == "dgemv")
                 func = dgemv;
+            else if (op_type == "sgemv")
+                func = sgemv;
             else
             {
                 if (argc < 5)
@@ -181,7 +210,8 @@ namespace
         void print_usage(const char* prog)
         {
             std::cerr << "Usage: " << prog
-                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans,dgemv} <m> <n> <k>\n";
+                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans,dgemv,sgemv} "
+                << "<m> <n> <k>\n";
         }
     };
 }
