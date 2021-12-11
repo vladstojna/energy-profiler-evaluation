@@ -46,6 +46,7 @@ namespace
 
         template<typename Transpose, typename Real>
         NO_INLINE void gemm_compute(
+            std::size_t iters,
             std::size_t M,
             std::size_t N,
             std::size_t K,
@@ -54,13 +55,15 @@ namespace
             Real* c)
         {
             tp::sampler smp(g_tpr);
-            gemm_caller<Real>::value(
-                CblasRowMajor, CblasNoTrans, Transpose::value,
-                M, N, K, 1.0, a, K, b, N, 0, c, N);
+            for (decltype(iters) i = 0; i < iters; i++)
+                gemm_caller<Real>::value(
+                    CblasRowMajor, CblasNoTrans, Transpose::value,
+                    M, N, K, 1.0, a, K, b, N, 0, c, N);
         }
 
         template<typename Real, typename Transpose>
-        void gemm_impl(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+        void gemm_impl(
+            std::size_t M, std::size_t N, std::size_t K, std::size_t iters, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -71,11 +74,12 @@ namespace
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-            gemm_compute<Transpose>(M, N, K, a.data(), b.data(), c.data());
+            gemm_compute<Transpose>(iters, M, N, K, a.data(), b.data(), c.data());
         }
 
         template<typename Real>
         NO_INLINE void gemv_compute(
+            std::size_t iters,
             std::size_t M,
             std::size_t N,
             const Real* a,
@@ -83,12 +87,15 @@ namespace
             Real* y)
         {
             tp::sampler smp(g_tpr);
-            gemv_caller<Real>::value(
-                CblasRowMajor, CblasNoTrans, M, N, 1.0, a, N, x, 1, 0, y, 1);
+            for (decltype(iters) i = 0; i < iters; i++)
+                gemv_caller<Real>::value(
+                    CblasRowMajor, CblasNoTrans,
+                    M, N, 1.0, a, N, x, 1, 0, y, 1);
         }
 
         template<typename Real>
-        void gemv_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
+        void gemv_impl(
+            std::size_t M, std::size_t N, std::size_t iters, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -98,12 +105,13 @@ namespace
             std::vector<Real> x(N);
             std::vector<Real> y(M);
             std::generate(a.begin(), a.end(), gen);
-            gemv_compute(M, N, a.data(), x.data(), y.data());
+            gemv_compute(iters, M, N, a.data(), x.data(), y.data());
         }
     }
 
 #define DECLARE_FUNC(f) \
-    NO_INLINE void f(std::size_t, std::size_t, std::size_t, std::mt19937_64&)
+    NO_INLINE void f(\
+        std::size_t, std::size_t, std::size_t, std::size_t, std::mt19937_64&)
 
     DECLARE_FUNC(dgemm_notrans);
     DECLARE_FUNC(dgemm);
@@ -112,34 +120,64 @@ namespace
     DECLARE_FUNC(dgemv);
     DECLARE_FUNC(sgemv);
 
-    void dgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void dgemm_notrans(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<double, detail::no_transpose>(M, N, K, engine);
+        detail::gemm_impl<double, detail::no_transpose>(M, N, K, iters, engine);
     }
 
-    void dgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void dgemm(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<double, detail::transpose>(M, N, K, engine);
+        detail::gemm_impl<double, detail::transpose>(M, N, K, iters, engine);
     }
 
-    void sgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void sgemm_notrans(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<float, detail::no_transpose>(M, N, K, engine);
+        detail::gemm_impl<float, detail::no_transpose>(M, N, K, iters, engine);
     }
 
-    void sgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void sgemm(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<float, detail::transpose>(M, N, K, engine);
+        detail::gemm_impl<float, detail::transpose>(M, N, K, iters, engine);
     }
 
-    void dgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    void dgemv(
+        std::size_t M,
+        std::size_t N,
+        std::size_t,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemv_impl<double>(M, N, engine);
+        detail::gemv_impl<double>(M, N, iters, engine);
     }
 
-    void sgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    void sgemv(
+        std::size_t M,
+        std::size_t N,
+        std::size_t,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemv_impl<float>(M, N, engine);
+        detail::gemv_impl<float>(M, N, iters, engine);
     }
 
     struct cmdparams
@@ -208,7 +246,7 @@ namespace
 
         void do_work(std::mt19937_64& engine) const
         {
-            func(m, n, k, engine);
+            func(m, n, k, iters, engine);
         }
 
     private:
