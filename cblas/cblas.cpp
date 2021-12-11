@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <charconv>
 #include <random>
 #include <vector>
 
@@ -149,6 +148,7 @@ namespace
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
+        std::size_t iters = 1;
         work_func func = nullptr;
 
         cmdparams(int argc, const char* const* argv)
@@ -166,11 +166,19 @@ namespace
                 });
 
             util::to_scalar(argv[2], m);
+            assert_positive(m, "m");
             util::to_scalar(argv[3], n);
+            assert_positive(n, "n");
             if (op_type == "dgemv")
+            {
                 func = dgemv;
+                get_iterations(argc, argv, 4);
+            }
             else if (op_type == "sgemv")
+            {
                 func = sgemv;
+                get_iterations(argc, argv, 4);
+            }
             else
             {
                 if (argc < 5)
@@ -179,6 +187,7 @@ namespace
                     throw std::invalid_argument(op_type.append(": not enough arguments"));
                 }
                 util::to_scalar(argv[4], k);
+                assert_positive(k, "k");
                 if (op_type == "dgemm")
                     func = dgemm;
                 else if (op_type == "dgemm_notrans")
@@ -192,6 +201,7 @@ namespace
                     print_usage(argv[0]);
                     throw std::invalid_argument(std::string("invalid work type: ").append(op_type));
                 }
+                get_iterations(argc, argv, 5);
             }
             assert(func);
         }
@@ -202,11 +212,26 @@ namespace
         }
 
     private:
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
+        }
+
+        void get_iterations(int argc, const char* const* argv, int idx)
+        {
+            if (argc > idx)
+                util::to_scalar(argv[idx], iters);
+            assert_positive(iters, "iters");
+        }
+
         void print_usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog
-                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans,dgemv,sgemv} "
-                << "<m> <n> <k>\n";
+            std::cerr << "Usage:\n"
+                << "\t" << prog
+                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans} <m> <n> <k> <iters>\n"
+                << "\t" << prog << " {dgemv,sgemv} <m> <n> <iters>\n";
         }
     };
 }
