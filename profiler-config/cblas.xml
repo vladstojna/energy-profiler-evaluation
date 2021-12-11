@@ -49,6 +49,15 @@
             <interval>100</interval>
         </section>
 
+        <section target="cpu" label="sgemv">
+            <bounds>
+                <func name="(anonymous namespace)::sgemv"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
     </sections>
 
 </config>
