@@ -13,6 +13,8 @@
 #include <random>
 #include <vector>
 
+#define NO_INLINE __attribute__((noinline))
+
 namespace
 {
     tp::printer g_tpr;
@@ -54,32 +56,33 @@ namespace
         }
     }
 
-    __attribute__((noinline))
-        void dgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    NO_INLINE void dgemm_notrans(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
+    NO_INLINE void dgemm(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
+    NO_INLINE void sgemm_notrans(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
+    NO_INLINE void sgemm(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
+    NO_INLINE void dgemv(std::size_t, std::size_t, std::size_t, std::mt19937_64&);
+
+    void dgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
         detail::gemm_impl<double, CblasNoTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline))
-        void dgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void dgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
         detail::gemm_impl<double, CblasTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline))
-        void sgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void sgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
         detail::gemm_impl<float, CblasNoTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline))
-        void sgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void sgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
     {
         detail::gemm_impl<float, CblasTrans>(M, N, K, engine);
     }
 
-    __attribute__((noinline))
-        void dgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    void dgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         std::uniform_real_distribution<double> dist{ 0.0, 1.0 };
         auto gen = [&]() { return dist(engine); };
