@@ -12,6 +12,7 @@
 #include <random>
 
 #define NO_INLINE __attribute__((noinline))
+#define NO_CLONE __attribute__((noclone))
 
 namespace
 {
@@ -67,7 +68,7 @@ namespace
         }
 
         template<typename Real>
-        NO_INLINE void gemm_compute(
+        NO_INLINE NO_CLONE void gemm_compute(
             cublas_handle& handle,
             std::size_t iters,
             std::size_t M,
@@ -103,8 +104,8 @@ namespace
             auto gen = [&]() { return dist(engine); };
 
             tp::sampler smp(g_tpr);
-            Real alpha = 1.0;
-            Real beta = 0.0;
+            constexpr Real alpha = 1.0;
+            constexpr Real beta = 0.0;
             util::buffer<Real> a{ M * K };
             util::buffer<Real> b{ K * N };
             util::buffer<Real> c{ M * N };
