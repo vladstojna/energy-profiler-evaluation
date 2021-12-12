@@ -11,6 +11,8 @@
 #include <cassert>
 #include <random>
 
+#define NO_INLINE __attribute__((noinline))
+
 namespace
 {
     tp::printer g_tpr;
@@ -107,7 +109,7 @@ namespace
         }
     }
 
-    __attribute__((noinline)) void dgemm(
+    NO_INLINE void dgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
@@ -117,7 +119,7 @@ namespace
         detail::gemm_impl<double>(M, N, K, handle, engine);
     }
 
-    __attribute__((noinline)) void sgemm(
+    NO_INLINE void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
@@ -147,8 +149,11 @@ namespace
                 [](unsigned char c) { return std::tolower(c); });
 
             util::to_scalar(argv[2], m);
+            assert_positive(m, "m");
             util::to_scalar(argv[3], n);
+            assert_positive(n, "n");
             util::to_scalar(argv[4], k);
+            assert_positive(k, "k");
 
             if (op_type == "dgemm")
                 func = dgemm;
@@ -168,6 +173,13 @@ namespace
         }
 
     private:
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
+        }
+
         void print_usage(const char* prog)
         {
             std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k>\n";
