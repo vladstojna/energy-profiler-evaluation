@@ -67,6 +67,26 @@ namespace
         }
 
         template<typename Real>
+        NO_INLINE void gemm_compute(
+            cublas_handle& handle,
+            std::size_t M,
+            std::size_t N,
+            std::size_t K,
+            const Real* alpha,
+            const Real* a,
+            const Real* b,
+            const Real* beta,
+            Real* c)
+        {
+            tp::sampler smp(g_tpr);
+            auto res = gemm_caller<Real>::value(handle,
+                CUBLAS_OP_N, CUBLAS_OP_N,
+                M, N, K, alpha, a, M, b, K, beta, c, M);
+            handle_error(res);
+            cudaDeviceSynchronize();
+        }
+
+        template<typename Real>
         void gemm_impl(
             std::size_t M,
             std::size_t N,
@@ -85,26 +105,12 @@ namespace
             util::buffer<Real> c{ M * N };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-
             smp.do_sample();
             util::device_buffer dev_a{ a.begin(), a.end() };
             util::device_buffer dev_b{ b.begin(), b.end() };
             util::device_buffer<Real> dev_c{ c.size() };
-
-            smp.do_sample();
-            auto res = gemm_caller<Real>::value(
-                handle,
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
-                M, N, K, &alpha,
-                dev_a.get(), M,
-                dev_b.get(), K,
-                &beta,
-                dev_c.get(), M);
-            handle_error(res);
-            cudaDeviceSynchronize();
-
-            smp.do_sample();
+            gemm_compute(handle, M, N, K,
+                &alpha, dev_a.get(), dev_b.get(), &beta, dev_c.get());
             util::copy(dev_c, dev_c.size(), c.begin());
         }
     }
@@ -200,5 +206,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
+        return 1;
     }
 }
