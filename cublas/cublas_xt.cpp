@@ -64,6 +64,7 @@ namespace
         template<typename Real>
         NO_INLINE NO_CLONE void gemm_compute(
             cublasxt_handle& handle,
+            std::size_t iters,
             std::size_t M,
             std::size_t N,
             std::size_t K,
@@ -74,10 +75,13 @@ namespace
             Real* c)
         {
             tp::sampler smp(g_tpr);
-            auto res = gemm_caller<Real>::value(handle,
-                CUBLAS_OP_N, CUBLAS_OP_N,
-                M, N, K, alpha, a, M, b, K, beta, c, M);
-            handle_error(res);
+            for (decltype(iters) i = 0; i < iters; ++i)
+            {
+                auto res = gemm_caller<Real>::value(handle,
+                    CUBLAS_OP_N, CUBLAS_OP_N,
+                    M, N, K, alpha, a, M, b, K, beta, c, M);
+                handle_error(res);
+            }
         }
 
         template<typename Real>
@@ -85,6 +89,7 @@ namespace
             std::size_t M,
             std::size_t N,
             std::size_t K,
+            std::size_t iters,
             cublasxt_handle& handle,
             std::mt19937_64& engine)
         {
@@ -99,8 +104,8 @@ namespace
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-            gemm_compute(
-                handle, M, N, K, &alpha, a.data(), b.data(), &beta, c.data());
+            gemm_compute(handle, iters,
+                M, N, K, &alpha, a.data(), b.data(), &beta, c.data());
         }
     }
 
@@ -108,20 +113,22 @@ namespace
         std::size_t M,
         std::size_t N,
         std::size_t K,
+        std::size_t iters,
         cublasxt_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<double>(M, N, K, handle, engine);
+        detail::gemm_impl<double>(M, N, K, iters, handle, engine);
     }
 
     NO_INLINE void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
+        std::size_t iters,
         cublasxt_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<float>(M, N, K, handle, engine);
+        detail::gemm_impl<float>(M, N, K, iters, handle, engine);
     }
 
     void set_first_device(cublasxt_handle& handle)
@@ -143,6 +150,7 @@ namespace
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
+        std::size_t iters = 1;
         int block_dim = 0;
         work_func func = nullptr;
 
@@ -174,19 +182,25 @@ namespace
             util::to_scalar(argv[4], k);
             assert_positive(k, "k");
 
-            if (argc >= 6)
+            if (argc > 5)
             {
                 util::to_scalar(argv[5], block_dim);
-                if (block_dim <= 0)
+                if (block_dim < 0)
                     throw std::invalid_argument(
                         std::string("block dimension must be positive, found: ")
                         .append(std::to_string(block_dim)));
+            }
+
+            if (argc > 6)
+            {
+                util::to_scalar(argv[6], iters);
+                assert_positive(iters, "iters");
             }
         }
 
         void do_work(cublasxt_handle& handle, std::mt19937_64& engine) const
         {
-            func(m, n, k, handle, engine);
+            func(m, n, k, iters, handle, engine);
         }
 
     private:
@@ -199,7 +213,7 @@ namespace
 
         void print_usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <block_dim>\n";
+            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <block_dim> <iters>\n";
         }
     };
 }
@@ -215,6 +229,8 @@ int main(int argc, char** argv)
         set_first_device(handle);
         if (args.block_dim)
             set_block_dim(handle, args.block_dim);
+        else
+            std::cerr << "Using default block dimension\n";
         args.do_work(handle, engine);
     }
     catch (const std::exception& e)
