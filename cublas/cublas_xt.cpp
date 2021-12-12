@@ -10,6 +10,7 @@
 #include <vector>
 
 #define NO_INLINE __attribute__((noinline))
+#define NO_CLONE __attribute__((noclone))
 
 namespace
 {
@@ -61,6 +62,25 @@ namespace
         }
 
         template<typename Real>
+        NO_INLINE NO_CLONE void gemm_compute(
+            cublasxt_handle& handle,
+            std::size_t M,
+            std::size_t N,
+            std::size_t K,
+            const Real* alpha,
+            const Real* a,
+            const Real* b,
+            const Real* beta,
+            Real* c)
+        {
+            tp::sampler smp(g_tpr);
+            auto res = gemm_caller<Real>::value(handle,
+                CUBLAS_OP_N, CUBLAS_OP_N,
+                M, N, K, alpha, a, M, b, K, beta, c, M);
+            handle_error(res);
+        }
+
+        template<typename Real>
         void gemm_impl(
             std::size_t M,
             std::size_t N,
@@ -72,25 +92,15 @@ namespace
             auto gen = [&]() { return dist(engine); };
 
             tp::sampler smp(g_tpr);
+            constexpr Real alpha = 1.0;
+            constexpr Real beta = 0.0;
             std::vector<Real> a(M * K);
             std::vector<Real> b(K * N);
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-
-            Real alpha = 1.0;
-            Real beta = 0.0;
-
-            smp.do_sample();
-            cublasStatus_t res = gemm_caller<Real>::value(
-                handle,
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
-                M, N, K, &alpha,
-                a.data(), M,
-                b.data(), K,
-                &beta, c.data(), M);
-            handle_error(res);
+            gemm_compute(
+                handle, M, N, K, &alpha, a.data(), b.data(), &beta, c.data());
         }
     }
 
