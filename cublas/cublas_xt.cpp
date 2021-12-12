@@ -9,6 +9,8 @@
 #include <random>
 #include <vector>
 
+#define NO_INLINE __attribute__((noinline))
+
 namespace
 {
     tp::printer g_tpr;
@@ -92,7 +94,7 @@ namespace
         }
     }
 
-    __attribute__((noinline)) void dgemm(
+    NO_INLINE void dgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
@@ -102,7 +104,7 @@ namespace
         detail::gemm_impl<double>(M, N, K, handle, engine);
     }
 
-    __attribute__((noinline)) void sgemm(
+    NO_INLINE void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
@@ -144,11 +146,6 @@ namespace
             std::string op_type = argv[1];
             std::transform(op_type.begin(), op_type.end(), op_type.begin(),
                 [](unsigned char c) { return std::tolower(c); });
-
-            util::to_scalar(argv[2], m);
-            util::to_scalar(argv[3], n);
-            util::to_scalar(argv[4], k);
-
             if (op_type == "dgemm")
                 func = dgemm;
             else if (op_type == "sgemm")
@@ -160,14 +157,20 @@ namespace
             }
             assert(func);
 
+            util::to_scalar(argv[2], m);
+            assert_positive(m, "m");
+            util::to_scalar(argv[3], n);
+            assert_positive(n, "n");
+            util::to_scalar(argv[4], k);
+            assert_positive(k, "k");
+
             if (argc >= 6)
             {
                 util::to_scalar(argv[5], block_dim);
                 if (block_dim <= 0)
                     throw std::invalid_argument(
                         std::string("block dimension must be positive, found: ")
-                        .append(std::to_string(block_dim))
-                    );
+                        .append(std::to_string(block_dim)));
             }
         }
 
@@ -177,6 +180,13 @@ namespace
         }
 
     private:
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
+        }
+
         void print_usage(const char* prog)
         {
             std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <block_dim>\n";
@@ -200,5 +210,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
+        return 1;
     }
 }
