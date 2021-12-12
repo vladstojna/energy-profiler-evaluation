@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <sections>
+
+        <section target="gpu" label="dgemm">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::gemm_compute<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="gpu" label="sgemm">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::gemm_compute<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+    </sections>
+
+</config>
