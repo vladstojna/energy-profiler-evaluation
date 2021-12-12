@@ -69,6 +69,7 @@ namespace
         template<typename Real>
         NO_INLINE void gemm_compute(
             cublas_handle& handle,
+            std::size_t iters,
             std::size_t M,
             std::size_t N,
             std::size_t K,
@@ -79,11 +80,14 @@ namespace
             Real* c)
         {
             tp::sampler smp(g_tpr);
-            auto res = gemm_caller<Real>::value(handle,
-                CUBLAS_OP_N, CUBLAS_OP_N,
-                M, N, K, alpha, a, M, b, K, beta, c, M);
-            handle_error(res);
-            cudaDeviceSynchronize();
+            for (decltype(iters) i = 0; i < iters; ++i)
+            {
+                auto res = gemm_caller<Real>::value(handle,
+                    CUBLAS_OP_N, CUBLAS_OP_N,
+                    M, N, K, alpha, a, M, b, K, beta, c, M);
+                handle_error(res);
+                cudaDeviceSynchronize();
+            }
         }
 
         template<typename Real>
@@ -91,6 +95,7 @@ namespace
             std::size_t M,
             std::size_t N,
             std::size_t K,
+            std::size_t iters,
             cublas_handle& handle,
             std::mt19937_64& engine)
         {
@@ -109,7 +114,7 @@ namespace
             util::device_buffer dev_a{ a.begin(), a.end() };
             util::device_buffer dev_b{ b.begin(), b.end() };
             util::device_buffer<Real> dev_c{ c.size() };
-            gemm_compute(handle, M, N, K,
+            gemm_compute(handle, iters, M, N, K,
                 &alpha, dev_a.get(), dev_b.get(), &beta, dev_c.get());
             util::copy(dev_c, dev_c.size(), c.begin());
         }
@@ -119,20 +124,22 @@ namespace
         std::size_t M,
         std::size_t N,
         std::size_t K,
+        std::size_t iters,
         cublas_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<double>(M, N, K, handle, engine);
+        detail::gemm_impl<double>(M, N, K, iters, handle, engine);
     }
 
     NO_INLINE void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
+        std::size_t iters,
         cublas_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<float>(M, N, K, handle, engine);
+        detail::gemm_impl<float>(M, N, K, iters, handle, engine);
     }
 
     struct cmdargs
@@ -141,6 +148,7 @@ namespace
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
+        std::size_t iters = 1;
         work_func func = nullptr;
 
         cmdargs(int argc, const char* const* argv)
@@ -153,14 +161,6 @@ namespace
             std::string op_type = argv[1];
             std::transform(op_type.begin(), op_type.end(), op_type.begin(),
                 [](unsigned char c) { return std::tolower(c); });
-
-            util::to_scalar(argv[2], m);
-            assert_positive(m, "m");
-            util::to_scalar(argv[3], n);
-            assert_positive(n, "n");
-            util::to_scalar(argv[4], k);
-            assert_positive(k, "k");
-
             if (op_type == "dgemm")
                 func = dgemm;
             else if (op_type == "sgemm")
@@ -171,11 +171,24 @@ namespace
                 throw std::invalid_argument(std::string("invalid work type: ").append(argv[1]));
             }
             assert(func);
+
+            util::to_scalar(argv[2], m);
+            assert_positive(m, "m");
+            util::to_scalar(argv[3], n);
+            assert_positive(n, "n");
+            util::to_scalar(argv[4], k);
+            assert_positive(k, "k");
+
+            if (argc > 5)
+            {
+                util::to_scalar(argv[5], iters);
+                assert_positive(iters, "iters");
+            }
         }
 
         void do_work(cublas_handle& handle, std::mt19937_64& engine) const
         {
-            func(m, n, k, handle, engine);
+            func(m, n, k, iters, handle, engine);
         }
 
     private:
@@ -188,7 +201,7 @@ namespace
 
         void print_usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k>\n";
+            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <iters>\n";
         }
     };
 }
