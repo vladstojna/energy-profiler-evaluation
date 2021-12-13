@@ -73,24 +73,42 @@ namespace
         }
     };
 
-    NO_INLINE void copy(
+    NO_INLINE void copy_to_device(
         const util::buffer<std::uint8_t>& from,
         util::device_buffer<std::uint8_t>& into,
         std::size_t iters)
     {
         tp::sampler smp(g_tpr);
         for (std::size_t i = 0; i < iters; i++)
-        {
             util::copy(std::begin(from), std::end(from), into);
-        }
     }
 
-    void do_work(std::size_t n, std::size_t iters)
+    NO_INLINE void copy_from_device(
+        const util::device_buffer<std::uint8_t>& from,
+        util::buffer<std::uint8_t>& into,
+        std::size_t iters)
+    {
+        tp::sampler smp(g_tpr);
+        for (std::size_t i = 0; i < iters; i++)
+            util::copy(from, from.size(), std::begin(into));
+    }
+
+    void do_work(copy_direction dir, std::size_t n, std::size_t iters)
     {
         tp::sampler smp(g_tpr);
         util::buffer<std::uint8_t> buff(n);
         util::device_buffer<std::uint8_t> dev_buff(buff.size());
-        copy(buff, dev_buff, iters);
+        switch (dir)
+        {
+        case copy_direction::to_device:
+            copy_to_device(buff, dev_buff, iters);
+            break;
+        case copy_direction::from_device:
+            copy_from_device(dev_buff, buff, iters);
+            break;
+        default:
+            throw std::runtime_error("Invalid copy direction");
+        }
     }
 }
 
@@ -99,7 +117,7 @@ int main(int argc, char** argv)
     try
     {
         const arguments args{ argc, argv };
-        do_work(args.size, args.iters);
+        do_work(args.direction, args.size, args.iters);
     }
     catch (const std::exception& e)
     {
