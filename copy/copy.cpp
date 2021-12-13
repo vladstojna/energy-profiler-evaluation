@@ -10,35 +10,66 @@ namespace
 {
     tp::printer g_tpr;
 
+    enum class copy_direction
+    {
+        to_device,
+        from_device,
+    };
+
     struct arguments
     {
+        copy_direction direction;
         std::size_t size = 0;
         std::size_t iters = 1;
 
         arguments(int argc, const char* const* argv)
         {
-            if (argc < 2)
+            if (argc < 3)
             {
                 usage(argv[0]);
                 throw std::invalid_argument("Not enough arguments");
             }
-            util::to_scalar(argv[1], size);
-            assert(size > 0);
-            if (!size)
-                throw std::invalid_argument("size must be greater than 0");
-            if (argc > 2)
+            direction = get_direction(lowercase(argv[1]));
+            util::to_scalar(argv[2], size);
+            assert_positive(size, "size");
+            if (argc > 3)
             {
-                util::to_scalar(argv[2], iters);
-                assert(iters >= 1);
-                if (iters < 1)
-                    throw std::invalid_argument("iters must be greater than 1");
+                util::to_scalar(argv[3], iters);
+                assert_positive(iters, "iters");
             }
         }
 
     private:
+        std::string lowercase(const char* str)
+        {
+            std::string lower(str);
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                [](unsigned char c)
+                {
+                    return std::tolower(c);
+                });
+            return lower;
+        }
+
+        copy_direction get_direction(const std::string& x)
+        {
+            if (x == "to")
+                return copy_direction::to_device;
+            if (x == "from")
+                return copy_direction::from_device;
+            throw std::invalid_argument("direction must be 'to' or 'from'");
+        }
+
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
+        }
+
         void usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " [size in bytes] {iters}\n";
+            std::cerr << "Usage: " << prog << " {to,from} <size in bytes> <iters>\n";
         }
     };
 
