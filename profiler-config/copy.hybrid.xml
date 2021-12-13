@@ -2,9 +2,17 @@
 
 <config>
     <sections>
-        <section target="cpu,gpu" label="copy">
+        <section target="cpu,gpu" label="host_to_device">
             <bounds>
-                <func name="(anonymous namespace)::copy"/>
+                <func name="(anonymous namespace)::copy_to_device"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu,gpu" label="device_to_host">
+            <bounds>
+                <func name="(anonymous namespace)::copy_from_device"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
