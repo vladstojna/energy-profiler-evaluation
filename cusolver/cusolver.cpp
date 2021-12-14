@@ -637,9 +637,38 @@ namespace
     #elif CUDART_VERSION >= 11000
         // cusolverDnPotrf()
         template<typename Real>
-        int potrf_compute(cusolverdn_handle&, std::size_t, util::device_buffer<Real>&)
+        int potrf_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
         {
-            throw std::runtime_error("potrf_compute not implemented");
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            std::size_t workspace;
+            auto status = cusolverDnPotrf_bufferSize(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                &workspace);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnPotrf_bufferSize", status);
+
+            smp.do_sample();
+
+            util::device_buffer<std::uint8_t> dev_work{ workspace };
+            status = cusolverDnPotrf(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                dev_work.get(), workspace,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnPotrf", status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
         }
     #else
         DEFINE_CALL(potrf);
