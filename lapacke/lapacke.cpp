@@ -1,5 +1,4 @@
 #if defined V_USE_OPENBLAS
-#include <cblas.h>
 #include <lapacke.h>
 #elif defined V_USE_MKL
 #include <mkl.h>
@@ -50,46 +49,35 @@ namespace
         DEFINE_CALLER(trtri);
         DEFINE_CALLER(potrf);
 
-        template<typename>
-        struct syrk_caller {};
-        template<>
-        struct syrk_caller<float> : func_obj<cblas_ssyrk> {};
-        template<>
-        struct syrk_caller<double> : func_obj<cblas_dsyrk> {};
+        template<typename It, typename Gen>
+        void fill_upper_triangular(It from, It to, std::size_t ld, Gen gen)
+        {
+            for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                for (auto entry = it; entry < it + nnz; entry++)
+                    *entry = gen();
+        }
 
         template<typename Real>
-        std::vector<Real> spd_matrix(
-            CBLAS_UPLO uplo,
-            std::size_t N,
-            std::mt19937_64& engine)
+        std::vector<Real> upper_dd_matrix(std::size_t N, std::mt19937_64& engine)
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
             std::vector<Real> a(N * N);
-            std::vector<Real> c(N * N);
-            // probability for a random matrix to be singular is almost 0
-            std::generate(a.begin(), a.end(), gen);
-            // compute C = trans(A) * A, which is positive definite
-            // as long as A is invertible
-            smp.do_sample();
-            syrk_caller<Real>::value(
-                CblasColMajor, uplo, CblasNoTrans,
-                N, N, 1.0, a.data(), N, 0.0, c.data(), N);
-            // compute C = C + rand(N, 2N) * Identity(N, N)
-            // to guarantee that the matrix is diagonally dominant and avoid
-            // rounding errors
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
             smp.do_sample();
             {
+                // compute A = A + rand(N, 2N) * Identity(N, N)
+                // to guarantee that the matrix is diagonally dominant
                 std::uniform_real_distribution<Real> dist{
                     static_cast<Real>(N),
                     static_cast<Real>(2 * N)
                 };
-                for (auto [it, x] = std::pair{ c.begin(), 0 }; it < c.end(); it += N, ++x)
+                for (auto [it, x] = std::pair{ a.begin(), 0 }; it < a.end(); it += N, ++x)
                     *(it + x) += dist(engine);
             }
-            return c;
+            return a;
         }
 
         template<typename Real>
@@ -228,14 +216,6 @@ namespace
         template<typename Real>
         void trtri_impl(std::size_t N, std::mt19937_64& engine)
         {
-            // upper triangular in column-major is lower triangular in row-major
-            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
-            {
-                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
-                    for (auto entry = it; entry < it + nnz; entry++)
-                        *entry = gen();
-            };
-
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
             auto gen = [&]() { return dist(engine); };
 
@@ -244,6 +224,8 @@ namespace
             fill_upper_triangular(a.begin(), a.end(), N, gen);
 
             smp.do_sample();
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
             int res = trtri_caller<Real>::value(
                 LAPACK_COL_MAJOR, 'L', 'N', N, a.data(), N);
             handle_error(res);
@@ -253,7 +235,9 @@ namespace
         void potrf_impl(std::size_t N, std::mt19937_64& engine)
         {
             tp::sampler smp(g_tpr);
-            auto a = spd_matrix<Real>(CblasLower, N, engine);
+            auto a = upper_dd_matrix<Real>(N, engine);
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
             int res = potrf_caller<Real>::value(
                 LAPACK_COL_MAJOR, 'L', N, a.data(), N);
             handle_error(res);
