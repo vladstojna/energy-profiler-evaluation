@@ -113,6 +113,38 @@ namespace
         }
     #endif // CUDART_VERSION < 11040
 
+        template<typename It, typename Gen>
+        void fill_upper_triangular(It from, It to, std::size_t ld, Gen gen)
+        {
+            for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                for (auto entry = it; entry < it + nnz; entry++)
+                    *entry = gen();
+        }
+
+        template<typename Real>
+        util::buffer<Real> upper_dd_matrix(std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            util::buffer<Real> a(N * N);
+            std::fill(a.begin(), a.end(), Real{});
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
+            smp.do_sample();
+            {
+                // compute A = A + rand(N, 2N) * Identity(N, N)
+                // to guarantee that the matrix is diagonally dominant
+                std::uniform_real_distribution<Real> dist{
+                    static_cast<Real>(N),
+                    static_cast<Real>(2 * N)
+                };
+                for (auto [it, x] = std::pair{ a.begin(), 0 }; it < a.end(); it += N, ++x)
+                    *(it + x) += dist(engine);
+            }
+            return a;
+        }
+
     #if CUDART_VERSION < 11040
 
         DEFINE_CALL(trtri);
@@ -191,14 +223,6 @@ namespace
         template<typename Real>
         int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
         {
-            // upper triangular in column-major is lower triangular in row-major
-            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
-            {
-                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
-                    for (auto entry = it; entry < it + nnz; entry++)
-                        *entry = gen();
-            };
-
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
             auto gen = [&]() { return dist(engine); };
 
@@ -211,6 +235,8 @@ namespace
             smp.do_sample();
 
             util::device_buffer dev_a{ a.begin(), a.end() };
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
             int info = trtri_compute(handle, N, dev_a);
 
             util::copy(dev_a, dev_a.size(), a.begin());
@@ -564,6 +590,43 @@ namespace
             return info;
         }
     #endif // CUDART_VERSION < 11000
+
+    #if CUDART_VERSION >= 11010
+        // cusolverDnXpotrf()
+        template<typename Real>
+        int potrf_compute(cusolverdn_handle&, std::size_t, util::device_buffer<Real>&)
+        {
+            throw std::runtime_error("potrf_compute not implemented");
+        }
+    #elif CUDART_VERSION >= 11000
+        // cusolverDnPotrf()
+        template<typename Real>
+        int potrf_compute(cusolverdn_handle&, std::size_t, util::device_buffer<Real>&)
+        {
+            throw std::runtime_error("potrf_compute not implemented");
+        }
+    #else
+        // cusolverDn<t>potrf()
+        template<typename Real>
+        int potrf_compute(cusolverdn_handle&, std::size_t, util::device_buffer<Real>&)
+        {
+            throw std::runtime_error("potrf_compute not implemented");
+        }
+    #endif // CUDART_VERSION >= 11010
+
+        template<typename Real>
+        int potrf_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            util::buffer<Real> a = upper_dd_matrix<Real>(N, engine);
+            smp.do_sample();
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
+            int info = potrf_compute(handle, N, dev_a);
+            util::copy(dev_a, dev_a.size(), a.begin());
+            return info;
+        }
     }
 
     __attribute__((noinline))
@@ -637,19 +700,13 @@ namespace
     __attribute__((noinline))
         int dpotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
     {
-        (void)handle;
-        (void)N;
-        (void)engine;
-        return 0;
+        return detail::potrf_impl<double>(handle, N, engine);
     }
 
     __attribute__((noinline))
         int spotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
     {
-        (void)handle;
-        (void)N;
-        (void)engine;
-        return 0;
+        return detail::potrf_impl<float>(handle, N, engine);
     }
 
     namespace work_type
