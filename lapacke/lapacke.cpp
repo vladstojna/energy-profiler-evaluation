@@ -290,6 +290,20 @@ namespace
         detail::trtri_impl<float>(N, engine);
     }
 
+    __attribute__((noinline))
+        void dpotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        (void)N;
+        (void)engine;
+    }
+
+    __attribute__((noinline))
+        void spotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        (void)N;
+        (void)engine;
+    }
+
     class cmdparams
     {
         using work_func = decltype(&dgesv);
@@ -335,7 +349,7 @@ namespace
                 util::to_scalar(argv[2], n);
                 util::to_scalar(argv[3], nrhs);
             }
-            else if (is_inversion(func))
+            else if (single_arg(func))
             {
                 if (argc < 3)
                 {
@@ -375,6 +389,11 @@ namespace
                 func == dtrtri || func == strtri;
         }
 
+        bool single_arg(work_func func)
+        {
+            return is_inversion(func) || func == dpotrf || func == spotrf;
+        }
+
         work_func get_work_func(const std::string& str)
         {
             if (str == "dgels")
@@ -405,6 +424,10 @@ namespace
                 return dgetrs;
             if (str == "sgetrs")
                 return sgetrs;
+            if (str == "dpotrf")
+                return dpotrf;
+            if (str == "spotrf")
+                return spotrf;
             return nullptr;
         }
 
@@ -415,6 +438,7 @@ namespace
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
                 << "\t" << prog << " {dgetri,sgetri} <n>\n"
                 << "\t" << prog << " {dtptri,stptri,dtrtri,strtri} <n>\n"
+                << "\t" << prog << " {dpotrf,spotrf} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
@@ -432,5 +456,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
+        return 1;
     }
 }
