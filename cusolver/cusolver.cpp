@@ -655,7 +655,6 @@ namespace
         {
             tp::sampler smp(g_tpr);
             util::buffer<Real> a = upper_dd_matrix<Real>(N, engine);
-            smp.do_sample();
             util::device_buffer dev_a{ a.begin(), a.end() };
             // upper triangular in row-major is lower triangular in column-major,
             // therefore pass 'L' to function which expects a column-major format
