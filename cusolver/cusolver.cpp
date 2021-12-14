@@ -642,11 +642,36 @@ namespace
             throw std::runtime_error("potrf_compute not implemented");
         }
     #else
+        DEFINE_CALL(potrf);
+
         // cusolverDn<t>potrf()
         template<typename Real>
-        int potrf_compute(cusolverdn_handle&, std::size_t, util::device_buffer<Real>&)
+        int potrf_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
         {
-            throw std::runtime_error("potrf_compute not implemented");
+            using call = potrf_call<Real>;
+
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+            int lwork;
+            auto status = call::query(handle, uplo, N, a.get(), N, &lwork);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::query_str, status);
+
+            smp.do_sample();
+
+            util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+
+            status = call::compute(
+                handle, uplo, N, a.get(), N, dev_work.get(), lwork, dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
         }
     #endif // CUDART_VERSION >= 11010
 
