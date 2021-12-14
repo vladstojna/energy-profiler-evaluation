@@ -594,9 +594,45 @@ namespace
     #if CUDART_VERSION >= 11010
         // cusolverDnXpotrf()
         template<typename Real>
-        int potrf_compute(cusolverdn_handle&, std::size_t, util::device_buffer<Real>&)
+        int potrf_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
         {
-            throw std::runtime_error("potrf_compute not implemented");
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            std::size_t workspace_device;
+            std::size_t workspace_host;
+            auto status = cusolverDnXpotrf_bufferSize(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                &workspace_device,
+                &workspace_host);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnXpotrf_bufferSize", status);
+
+            smp.do_sample();
+
+            util::device_buffer<std::uint8_t> dev_work{ workspace_device };
+            util::buffer<std::uint8_t> host_work;
+            if (workspace_host)
+                host_work = util::buffer<std::uint8_t>{ workspace_host };
+
+            status = cusolverDnXpotrf(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                dev_work.get(), workspace_device,
+                host_work.get(), workspace_host,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnXpotrf", status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
         }
     #elif CUDART_VERSION >= 11000
         // cusolverDnPotrf()
