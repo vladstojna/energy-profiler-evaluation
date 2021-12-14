@@ -1,4 +1,5 @@
 #if defined V_USE_OPENBLAS
+#include <cblas.h>
 #include <lapacke.h>
 #elif defined V_USE_MKL
 #include <mkl.h>
@@ -47,6 +48,49 @@ namespace
         DEFINE_CALLER(getrs);
         DEFINE_CALLER(tptri);
         DEFINE_CALLER(trtri);
+        DEFINE_CALLER(potrf);
+
+        template<typename>
+        struct syrk_caller {};
+        template<>
+        struct syrk_caller<float> : func_obj<cblas_ssyrk> {};
+        template<>
+        struct syrk_caller<double> : func_obj<cblas_dsyrk> {};
+
+        template<typename Real>
+        std::vector<Real> spd_matrix(
+            CBLAS_UPLO uplo,
+            std::size_t N,
+            std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            std::vector<Real> a(N * N);
+            std::vector<Real> c(N * N);
+            // probability for a random matrix to be singular is almost 0
+            std::generate(a.begin(), a.end(), gen);
+            // compute C = trans(A) * A, which is positive definite
+            // as long as A is invertible
+            smp.do_sample();
+            syrk_caller<Real>::value(
+                CblasColMajor, uplo, CblasNoTrans,
+                N, N, 1.0, a.data(), N, 0.0, c.data(), N);
+            // compute C = C + rand(N, 2N) * Identity(N, N)
+            // to guarantee that the matrix is diagonally dominant and avoid
+            // rounding errors
+            smp.do_sample();
+            {
+                std::uniform_real_distribution<Real> dist{
+                    static_cast<Real>(N),
+                    static_cast<Real>(2 * N)
+                };
+                for (auto [it, x] = std::pair{ c.begin(), 0 }; it < c.end(); it += N, ++x)
+                    *(it + x) += dist(engine);
+            }
+            return c;
+        }
 
         template<typename Real>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -204,6 +248,16 @@ namespace
                 LAPACK_COL_MAJOR, 'L', 'N', N, a.data(), N);
             handle_error(res);
         }
+
+        template<typename Real>
+        void potrf_impl(std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            auto a = spd_matrix<Real>(CblasLower, N, engine);
+            int res = potrf_caller<Real>::value(
+                LAPACK_COL_MAJOR, 'L', N, a.data(), N);
+            handle_error(res);
+        }
     }
 
     __attribute__((noinline))
@@ -293,15 +347,13 @@ namespace
     __attribute__((noinline))
         void dpotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        (void)N;
-        (void)engine;
+        detail::potrf_impl<double>(N, engine);
     }
 
     __attribute__((noinline))
         void spotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
-        (void)N;
-        (void)engine;
+        detail::potrf_impl<float>(N, engine);
     }
 
     class cmdparams
