@@ -634,6 +634,24 @@ namespace
         return detail::gels_impl<float>(handle, M, N, Nrhs, engine);
     }
 
+    __attribute__((noinline))
+        int dpotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    {
+        (void)handle;
+        (void)N;
+        (void)engine;
+        return 0;
+    }
+
+    __attribute__((noinline))
+        int spotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    {
+        (void)handle;
+        (void)N;
+        (void)engine;
+        return 0;
+    }
+
     namespace work_type
     {
         enum type
@@ -648,6 +666,8 @@ namespace
             sgesv,
             dgels,
             sgels,
+            dpotrf,
+            spotrf,
         };
     }
 
@@ -704,7 +724,8 @@ namespace
                 if (n > m)
                     throw std::invalid_argument("n must not be greater than m");
             }
-            else if (wtype == work_type::dtrtri || wtype == work_type::strtri)
+            else if (wtype == work_type::dtrtri || wtype == work_type::strtri ||
+                wtype == work_type::dpotrf || wtype == work_type::spotrf)
             {
                 if (argc < 3)
                     throw_too_few(prog, op_type);
@@ -744,6 +765,8 @@ namespace
             WORK_RETURN_IF(op_type, sgesv);
             WORK_RETURN_IF(op_type, dgels);
             WORK_RETURN_IF(op_type, sgels);
+            WORK_RETURN_IF(op_type, dpotrf);
+            WORK_RETURN_IF(op_type, spotrf);
             throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
         }
 
@@ -751,6 +774,7 @@ namespace
         {
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dtrtri,strtri} <n>\n"
+                << "\t" << prog << " {dpotrf,spotrf} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n"
                 << "\t" << prog << " {dgetrs,sgetrs,dgesv,sgesv} <n> <n_rhs>\n"
                 << "\t" << prog << " {dgels,sgels} <n> <m> <n_rhs>\n";
@@ -767,6 +791,12 @@ namespace
         case work_type::strtri:
             std::cerr << "strtri N=" << args.n << "\n";
             return strtri(handle, args.n, gen);
+        case work_type::dpotrf:
+            std::cerr << "dpotrf N=" << args.n << "\n";
+            return dpotrf(handle, args.n, gen);
+        case work_type::spotrf:
+            std::cerr << "spotrf N=" << args.n << "\n";
+            return spotrf(handle, args.n, gen);
         case work_type::dgetrf:
             std::cerr << "dgetrf M=" << args.m << ", N=" << args.n << "\n";
             return dgetrf(handle, args.m, args.n, gen);
@@ -819,5 +849,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        return 1;
     }
 }
