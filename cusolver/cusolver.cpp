@@ -113,6 +113,38 @@ namespace
         }
     #endif // CUDART_VERSION < 11040
 
+        template<typename It, typename Gen>
+        void fill_upper_triangular(It from, It to, std::size_t ld, Gen gen)
+        {
+            for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                for (auto entry = it; entry < it + nnz; entry++)
+                    *entry = gen();
+        }
+
+        template<typename Real>
+        util::buffer<Real> upper_dd_matrix(std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            util::buffer<Real> a(N * N);
+            std::fill(a.begin(), a.end(), Real{});
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
+            smp.do_sample();
+            {
+                // compute A = A + rand(N, 2N) * Identity(N, N)
+                // to guarantee that the matrix is diagonally dominant
+                std::uniform_real_distribution<Real> dist{
+                    static_cast<Real>(N),
+                    static_cast<Real>(2 * N)
+                };
+                for (auto [it, x] = std::pair{ a.begin(), 0 }; it < a.end(); it += N, ++x)
+                    *(it + x) += dist(engine);
+            }
+            return a;
+        }
+
     #if CUDART_VERSION < 11040
 
         DEFINE_CALL(trtri);
@@ -191,14 +223,6 @@ namespace
         template<typename Real>
         int trtri_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
         {
-            // upper triangular in column-major is lower triangular in row-major
-            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
-            {
-                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
-                    for (auto entry = it; entry < it + nnz; entry++)
-                        *entry = gen();
-            };
-
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
             auto gen = [&]() { return dist(engine); };
 
@@ -211,6 +235,8 @@ namespace
             smp.do_sample();
 
             util::device_buffer dev_a{ a.begin(), a.end() };
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
             int info = trtri_compute(handle, N, dev_a);
 
             util::copy(dev_a, dev_a.size(), a.begin());
@@ -564,6 +590,132 @@ namespace
             return info;
         }
     #endif // CUDART_VERSION < 11000
+
+    #if CUDART_VERSION >= 11010
+        // cusolverDnXpotrf()
+        template<typename Real>
+        int potrf_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
+        {
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            std::size_t workspace_device;
+            std::size_t workspace_host;
+            auto status = cusolverDnXpotrf_bufferSize(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                &workspace_device,
+                &workspace_host);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnXpotrf_bufferSize", status);
+
+            smp.do_sample();
+
+            util::device_buffer<std::uint8_t> dev_work{ workspace_device };
+            util::buffer<std::uint8_t> host_work;
+            if (workspace_host)
+                host_work = util::buffer<std::uint8_t>{ workspace_host };
+
+            status = cusolverDnXpotrf(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                dev_work.get(), workspace_device,
+                host_work.get(), workspace_host,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnXpotrf", status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #elif CUDART_VERSION >= 11000
+        // cusolverDnPotrf()
+        template<typename Real>
+        int potrf_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
+        {
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+
+            std::size_t workspace;
+            auto status = cusolverDnPotrf_bufferSize(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                &workspace);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnPotrf_bufferSize", status);
+
+            smp.do_sample();
+
+            util::device_buffer<std::uint8_t> dev_work{ workspace };
+            status = cusolverDnPotrf(handle, nullptr, uplo, N,
+                cuda_data_type<Real>::value,
+                a.get(), N,
+                cuda_data_type<Real>::value,
+                dev_work.get(), workspace,
+                dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error("cusolverDnPotrf", status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #else
+        DEFINE_CALL(potrf);
+
+        // cusolverDn<t>potrf()
+        template<typename Real>
+        int potrf_compute(cusolverdn_handle& handle, std::size_t N, util::device_buffer<Real>& a)
+        {
+            using call = potrf_call<Real>;
+
+            constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+
+            tp::sampler smp(g_tpr);
+
+            int info = 0;
+            util::device_buffer dev_info{ &info, &info + 1 };
+            int lwork;
+            auto status = call::query(handle, uplo, N, a.get(), N, &lwork);
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::query_str, status);
+
+            smp.do_sample();
+
+            util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+
+            status = call::compute(
+                handle, uplo, N, a.get(), N, dev_work.get(), lwork, dev_info.get());
+            if (status != CUSOLVER_STATUS_SUCCESS)
+                cusolver_error(call::compute_str, status);
+
+            util::copy(dev_info, 1, &info);
+            return info;
+        }
+    #endif // CUDART_VERSION >= 11010
+
+        template<typename Real>
+        int potrf_impl(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            util::buffer<Real> a = upper_dd_matrix<Real>(N, engine);
+            util::device_buffer dev_a{ a.begin(), a.end() };
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
+            int info = potrf_compute(handle, N, dev_a);
+            util::copy(dev_a, dev_a.size(), a.begin());
+            return info;
+        }
     }
 
     __attribute__((noinline))
@@ -634,6 +786,18 @@ namespace
         return detail::gels_impl<float>(handle, M, N, Nrhs, engine);
     }
 
+    __attribute__((noinline))
+        int dpotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    {
+        return detail::potrf_impl<double>(handle, N, engine);
+    }
+
+    __attribute__((noinline))
+        int spotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    {
+        return detail::potrf_impl<float>(handle, N, engine);
+    }
+
     namespace work_type
     {
         enum type
@@ -648,6 +812,8 @@ namespace
             sgesv,
             dgels,
             sgels,
+            dpotrf,
+            spotrf,
         };
     }
 
@@ -704,7 +870,8 @@ namespace
                 if (n > m)
                     throw std::invalid_argument("n must not be greater than m");
             }
-            else if (wtype == work_type::dtrtri || wtype == work_type::strtri)
+            else if (wtype == work_type::dtrtri || wtype == work_type::strtri ||
+                wtype == work_type::dpotrf || wtype == work_type::spotrf)
             {
                 if (argc < 3)
                     throw_too_few(prog, op_type);
@@ -744,6 +911,8 @@ namespace
             WORK_RETURN_IF(op_type, sgesv);
             WORK_RETURN_IF(op_type, dgels);
             WORK_RETURN_IF(op_type, sgels);
+            WORK_RETURN_IF(op_type, dpotrf);
+            WORK_RETURN_IF(op_type, spotrf);
             throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
         }
 
@@ -751,6 +920,7 @@ namespace
         {
             std::cerr << "Usage:\n"
                 << "\t" << prog << " {dtrtri,strtri} <n>\n"
+                << "\t" << prog << " {dpotrf,spotrf} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n"
                 << "\t" << prog << " {dgetrs,sgetrs,dgesv,sgesv} <n> <n_rhs>\n"
                 << "\t" << prog << " {dgels,sgels} <n> <m> <n_rhs>\n";
@@ -767,6 +937,12 @@ namespace
         case work_type::strtri:
             std::cerr << "strtri N=" << args.n << "\n";
             return strtri(handle, args.n, gen);
+        case work_type::dpotrf:
+            std::cerr << "dpotrf N=" << args.n << "\n";
+            return dpotrf(handle, args.n, gen);
+        case work_type::spotrf:
+            std::cerr << "spotrf N=" << args.n << "\n";
+            return spotrf(handle, args.n, gen);
         case work_type::dgetrf:
             std::cerr << "dgetrf M=" << args.m << ", N=" << args.n << "\n";
             return dgetrf(handle, args.m, args.n, gen);
@@ -819,5 +995,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        return 1;
     }
 }
