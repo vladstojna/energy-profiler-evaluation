@@ -82,79 +82,153 @@ namespace
             return a;
         }
 
+        namespace compute
+        {
+            template<typename Real>
+            NO_INLINE void gesv(
+                Real* a,
+                Real* b,
+                lapack_int* ipiv,
+                std::size_t N,
+                std::size_t Nrhs)
+            {
+                tp::sampler smp(g_tpr);
+                int res = gesv_caller<Real>::value(
+                    LAPACK_COL_MAJOR, N, Nrhs, a, N, ipiv, b, N);
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void gels(
+                Real* a,
+                Real* b,
+                std::size_t M,
+                std::size_t N,
+                std::size_t Nrhs)
+            {
+                tp::sampler smp(g_tpr);
+                Real workspace_query;
+                int res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
+                    'N', M, N, Nrhs, a, M, b, std::max(N, M), &workspace_query, -1);
+                handle_error(res);
+                smp.do_sample();
+                std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
+                res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
+                    'N', M, N, Nrhs, a, M, b, std::max(N, M), work.data(), work.size());
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void getrf(
+                Real* a,
+                lapack_int* ipiv,
+                std::size_t M,
+                std::size_t N)
+            {
+                tp::sampler smp(g_tpr);
+                int res = getrf_caller<Real>::value(
+                    LAPACK_COL_MAJOR, M, N, a, M, ipiv);
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void getri(Real* a, const lapack_int* ipiv, std::size_t N)
+            {
+                tp::sampler smp(g_tpr);
+                Real workspace_query;
+                int res = getri_caller<Real>::value(LAPACK_COL_MAJOR,
+                    N, a, N, ipiv, &workspace_query, -1);
+                handle_error(res);
+                smp.do_sample();
+                std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
+                res = getri_caller<Real>::value(
+                    LAPACK_COL_MAJOR, N, a, N, ipiv, work.data(), work.size());
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void getrs(
+                const Real* a,
+                Real* b,
+                const lapack_int* ipiv,
+                std::size_t N,
+                std::size_t Nrhs)
+            {
+                tp::sampler smp(g_tpr);
+                int res = getrs_caller<Real>::value(
+                    LAPACK_COL_MAJOR, 'N', N, Nrhs, a, N, ipiv, b, N);
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void tptri(Real* a, std::size_t N)
+            {
+                tp::sampler smp(g_tpr);
+                int res = tptri_caller<Real>::value(
+                    LAPACK_COL_MAJOR, 'L', 'N', N, a);
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void trtri(Real* a, std::size_t N)
+            {
+                tp::sampler smp(g_tpr);
+                // upper triangular in row-major is lower triangular in column-major,
+                // therefore pass 'L' to function which expects a column-major format
+                int res = trtri_caller<Real>::value(
+                    LAPACK_COL_MAJOR, 'L', 'N', N, a, N);
+                handle_error(res);
+            }
+
+            template<typename Real>
+            NO_INLINE void potrf(Real* a, std::size_t N)
+            {
+                tp::sampler smp(g_tpr);
+                // upper triangular in row-major is lower triangular in column-major,
+                // therefore pass 'L' to function which expects a column-major format
+                int res = potrf_caller<Real>::value(
+                    LAPACK_COL_MAJOR, 'L', N, a, N);
+                handle_error(res);
+            }
+        }
+
         template<typename Real>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             std::vector<Real> a(N * N);
             std::vector<Real> b(N * Nrhs);
             std::vector<lapack_int> ipiv(N);
-
+            auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-
-            smp.do_sample();
-            int res = gesv_caller<Real>::value(
-                LAPACK_COL_MAJOR, N, Nrhs, a.data(), N, ipiv.data(), b.data(), N);
-            handle_error(res);
+            compute::gesv(a.data(), b.data(), ipiv.data(), N, Nrhs);
         }
 
         template<typename Real>
         void gels_impl(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             std::vector<Real> a(M * N);
             std::vector<Real> b(std::max(N, M) * Nrhs);
-
+            auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-
-            smp.do_sample();
-            Real workspace_query;
-            int res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
-                'N', M, N, Nrhs, a.data(), M, b.data(), std::max(N, M), &workspace_query, -1);
-            handle_error(res);
-
-            smp.do_sample();
-            std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
-            res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
-                'N', M, N, Nrhs, a.data(), M, b.data(), std::max(N, M), work.data(), work.size());
-            handle_error(res);
+            compute::gels(a.data(), b.data(), M, N, Nrhs);
         }
 
         template<typename Real>
         void getri_impl(std::size_t N, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             std::vector<Real> a(N * N);
             std::vector<lapack_int> ipiv(N);
-            std::generate(a.begin(), a.end(), gen);
-
-            smp.do_sample();
-            int res = getrf_caller<Real>::value(
-                LAPACK_COL_MAJOR, N, N, a.data(), N, ipiv.data());
-            handle_error(res);
-
-            smp.do_sample();
-            Real workspace_query;
-            res = getri_caller<Real>::value(LAPACK_COL_MAJOR,
-                N, a.data(), N, ipiv.data(), &workspace_query, -1);
-            handle_error(res);
-
-            smp.do_sample();
-            std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
-            res = getri_caller<Real>::value(
-                LAPACK_COL_MAJOR, N, a.data(), N, ipiv.data(), work.data(), work.size());
-            handle_error(res);
+            std::generate(a.begin(), a.end(), [&]() { return dist(engine); });
+            compute::getrf(a.data(), ipiv.data(), N, N);
+            compute::getri(a.data(), ipiv.data(), N);
         }
 
         template<typename Real>
@@ -167,70 +241,44 @@ namespace
             std::vector<Real> a(M * N);
             std::vector<lapack_int> ipiv(std::min(M, N));
             std::generate(a.begin(), a.end(), gen);
-
-            smp.do_sample();
-            int res = getrf_caller<Real>::value(
-                LAPACK_COL_MAJOR, M, N, a.data(), M, ipiv.data());
-            handle_error(res);
+            compute::getrf(a.data(), ipiv.data(), M, N);
         }
 
         template<typename Real>
         void getrs_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             std::vector<Real> a(N * N);
             std::vector<Real> b(N * Nrhs);
             std::vector<lapack_int> ipiv(N);
-
+            auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-
-            smp.do_sample();
-            int res = getrf_caller<Real>::value(
-                LAPACK_COL_MAJOR, N, N, a.data(), N, ipiv.data());
-            handle_error(res);
-
-            smp.do_sample();
-            res = getrs_caller<Real>::value(
-                LAPACK_COL_MAJOR, 'N', N, Nrhs, a.data(), N, ipiv.data(), b.data(), N);
-            handle_error(res);
+            compute::getrf(a.data(), ipiv.data(), N, N);
+            compute::getrs(a.data(), b.data(), ipiv.data(), N, Nrhs);
         }
 
         template<typename Real>
         void tptri_impl(std::size_t N, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
             std::vector<Real> a_packed(N * (N + 1) / 2);
+            auto gen = [&]() { return dist(engine); };
             std::generate(a_packed.begin(), a_packed.end(), gen);
-
-            smp.do_sample();
-            int res = tptri_caller<Real>::value(
-                LAPACK_COL_MAJOR, 'L', 'N', N, a_packed.data());
-            handle_error(res);
+            compute::tptri(a_packed.data(), N);
         }
 
         template<typename Real>
         void trtri_impl(std::size_t N, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
             std::vector<Real> a(N * N);
+            auto gen = [&]() { return dist(engine); };
             fill_upper_triangular(a.begin(), a.end(), N, gen);
-
-            smp.do_sample();
-            // upper triangular in row-major is lower triangular in column-major,
-            // therefore pass 'L' to function which expects a column-major format
-            int res = trtri_caller<Real>::value(
-                LAPACK_COL_MAJOR, 'L', 'N', N, a.data(), N);
-            handle_error(res);
+            compute::trtri(a.data(), N);
         }
 
         template<typename Real>
@@ -238,11 +286,7 @@ namespace
         {
             tp::sampler smp(g_tpr);
             auto a = upper_dd_matrix<Real>(N, engine);
-            // upper triangular in row-major is lower triangular in column-major,
-            // therefore pass 'L' to function which expects a column-major format
-            int res = potrf_caller<Real>::value(
-                LAPACK_COL_MAJOR, 'L', N, a.data(), N);
-            handle_error(res);
+            compute::potrf(a.data(), N);
         }
     }
 
