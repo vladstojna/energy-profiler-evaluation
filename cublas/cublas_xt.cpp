@@ -9,6 +9,9 @@
 #include <random>
 #include <vector>
 
+#define NO_INLINE __attribute__((noinline))
+#define NO_CLONE __attribute__((noclone))
+
 namespace
 {
     tp::printer g_tpr;
@@ -59,10 +62,34 @@ namespace
         }
 
         template<typename Real>
+        NO_INLINE NO_CLONE void gemm_compute(
+            cublasxt_handle& handle,
+            std::size_t iters,
+            std::size_t M,
+            std::size_t N,
+            std::size_t K,
+            const Real* alpha,
+            const Real* a,
+            const Real* b,
+            const Real* beta,
+            Real* c)
+        {
+            tp::sampler smp(g_tpr);
+            for (decltype(iters) i = 0; i < iters; ++i)
+            {
+                auto res = gemm_caller<Real>::value(handle,
+                    CUBLAS_OP_N, CUBLAS_OP_N,
+                    M, N, K, alpha, a, M, b, K, beta, c, M);
+                handle_error(res);
+            }
+        }
+
+        template<typename Real>
         void gemm_impl(
             std::size_t M,
             std::size_t N,
             std::size_t K,
+            std::size_t iters,
             cublasxt_handle& handle,
             std::mt19937_64& engine)
         {
@@ -70,46 +97,38 @@ namespace
             auto gen = [&]() { return dist(engine); };
 
             tp::sampler smp(g_tpr);
+            constexpr Real alpha = 1.0;
+            constexpr Real beta = 0.0;
             std::vector<Real> a(M * K);
             std::vector<Real> b(K * N);
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-
-            Real alpha = 1.0;
-            Real beta = 0.0;
-
-            smp.do_sample();
-            cublasStatus_t res = gemm_caller<Real>::value(
-                handle,
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
-                M, N, K, &alpha,
-                a.data(), M,
-                b.data(), K,
-                &beta, c.data(), M);
-            handle_error(res);
+            gemm_compute(handle, iters,
+                M, N, K, &alpha, a.data(), b.data(), &beta, c.data());
         }
     }
 
-    __attribute__((noinline)) void dgemm(
+    NO_INLINE void dgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
+        std::size_t iters,
         cublasxt_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<double>(M, N, K, handle, engine);
+        detail::gemm_impl<double>(M, N, K, iters, handle, engine);
     }
 
-    __attribute__((noinline)) void sgemm(
+    NO_INLINE void sgemm(
         std::size_t M,
         std::size_t N,
         std::size_t K,
+        std::size_t iters,
         cublasxt_handle& handle,
         std::mt19937_64& engine)
     {
-        detail::gemm_impl<float>(M, N, K, handle, engine);
+        detail::gemm_impl<float>(M, N, K, iters, handle, engine);
     }
 
     void set_first_device(cublasxt_handle& handle)
@@ -131,6 +150,7 @@ namespace
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
+        std::size_t iters = 1;
         int block_dim = 0;
         work_func func = nullptr;
 
@@ -144,11 +164,6 @@ namespace
             std::string op_type = argv[1];
             std::transform(op_type.begin(), op_type.end(), op_type.begin(),
                 [](unsigned char c) { return std::tolower(c); });
-
-            util::to_scalar(argv[2], m);
-            util::to_scalar(argv[3], n);
-            util::to_scalar(argv[4], k);
-
             if (op_type == "dgemm")
                 func = dgemm;
             else if (op_type == "sgemm")
@@ -160,26 +175,45 @@ namespace
             }
             assert(func);
 
-            if (argc >= 6)
+            util::to_scalar(argv[2], m);
+            assert_positive(m, "m");
+            util::to_scalar(argv[3], n);
+            assert_positive(n, "n");
+            util::to_scalar(argv[4], k);
+            assert_positive(k, "k");
+
+            if (argc > 5)
             {
                 util::to_scalar(argv[5], block_dim);
-                if (block_dim <= 0)
+                if (block_dim < 0)
                     throw std::invalid_argument(
                         std::string("block dimension must be positive, found: ")
-                        .append(std::to_string(block_dim))
-                    );
+                        .append(std::to_string(block_dim)));
+            }
+
+            if (argc > 6)
+            {
+                util::to_scalar(argv[6], iters);
+                assert_positive(iters, "iters");
             }
         }
 
         void do_work(cublasxt_handle& handle, std::mt19937_64& engine) const
         {
-            func(m, n, k, handle, engine);
+            func(m, n, k, iters, handle, engine);
         }
 
     private:
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
+        }
+
         void print_usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <block_dim>\n";
+            std::cerr << "Usage: " << prog << " {dgemm,sgemm} <m> <n> <k> <block_dim> <iters>\n";
         }
     };
 }
@@ -195,10 +229,13 @@ int main(int argc, char** argv)
         set_first_device(handle);
         if (args.block_dim)
             set_block_dim(handle, args.block_dim);
+        else
+            std::cerr << "Using default block dimension\n";
         args.do_work(handle, engine);
     }
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
+        return 1;
     }
 }
