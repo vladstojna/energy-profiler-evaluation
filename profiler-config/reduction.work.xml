@@ -1,0 +1,407 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <sections label="sum">
+        <section target="cpu" label="sum_host_double">
+            <bounds>
+                <func name="(anonymous namespace)::sum<double>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="sum_host_float">
+            <bounds>
+                <func name="(anonymous namespace)::sum<float>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="sum_host_int64">
+            <bounds>
+                <func name="(anonymous namespace)::sum<long>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="sum_host_int32">
+            <bounds>
+                <func name="(anonymous namespace)::sum<int>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="sum_device_double">
+            <bounds>
+                <func name="(anonymous namespace)::sum<double>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="sum_device_float">
+            <bounds>
+                <func name="(anonymous namespace)::sum<float>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="sum_device_int64">
+            <bounds>
+                <func name="(anonymous namespace)::sum<long>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="sum_device_int32">
+            <bounds>
+                <func name="(anonymous namespace)::sum<int>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
+    <sections label="mult">
+        <section target="cpu" label="mult_host_double">
+            <bounds>
+                <func name="(anonymous namespace)::mult<double>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="mult_host_float">
+            <bounds>
+                <func name="(anonymous namespace)::mult<float>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="mult_host_int64">
+            <bounds>
+                <func name="(anonymous namespace)::mult<long>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="mult_host_int32">
+            <bounds>
+                <func name="(anonymous namespace)::mult<int>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="mult_device_double">
+            <bounds>
+                <func name="(anonymous namespace)::mult<double>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="mult_device_float">
+            <bounds>
+                <func name="(anonymous namespace)::mult<float>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="mult_device_int64">
+            <bounds>
+                <func name="(anonymous namespace)::mult<long>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="mult_device_int32">
+            <bounds>
+                <func name="(anonymous namespace)::mult<int>::value_type (anonymous namespace)::reduce_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
+    <sections label="count_if">
+        <section target="cpu" label="count_if_host_double">
+            <bounds>
+                <func name="double (anonymous namespace)::count_if_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="count_if_host_float">
+            <bounds>
+                <func name="float (anonymous namespace)::count_if_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="count_if_host_long">
+            <bounds>
+                <func name="long (anonymous namespace)::count_if_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="count_if_host_int">
+            <bounds>
+                <func name="int (anonymous namespace)::count_if_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="count_if_device_double">
+            <bounds>
+                <func name="double (anonymous namespace)::count_if_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="count_if_device_float">
+            <bounds>
+                <func name="float (anonymous namespace)::count_if_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="count_if_device_long">
+            <bounds>
+                <func name="long (anonymous namespace)::count_if_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="count_if_device_int">
+            <bounds>
+                <func name="int (anonymous namespace)::count_if_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
+    <sections label="max">
+        <section target="cpu" label="max_host_double">
+            <bounds>
+                <func name="double (anonymous namespace)::max_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="max_host_float">
+            <bounds>
+                <func name="float (anonymous namespace)::max_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="max_host_long">
+            <bounds>
+                <func name="long (anonymous namespace)::max_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="max_host_int">
+            <bounds>
+                <func name="int (anonymous namespace)::max_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="max_device_double">
+            <bounds>
+                <func name="double (anonymous namespace)::max_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="max_device_float">
+            <bounds>
+                <func name="float (anonymous namespace)::max_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="max_device_long">
+            <bounds>
+                <func name="long (anonymous namespace)::max_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="max_device_int">
+            <bounds>
+                <func name="int (anonymous namespace)::max_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
+    <sections label="min">
+        <section target="cpu" label="min_host_double">
+            <bounds>
+                <func name="double (anonymous namespace)::min_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="min_host_float">
+            <bounds>
+                <func name="float (anonymous namespace)::min_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="min_host_long">
+            <bounds>
+                <func name="long (anonymous namespace)::min_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="min_host_int">
+            <bounds>
+                <func name="int (anonymous namespace)::min_element_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="min_device_double">
+            <bounds>
+                <func name="double (anonymous namespace)::min_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="min_device_float">
+            <bounds>
+                <func name="float (anonymous namespace)::min_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="min_device_long">
+            <bounds>
+                <func name="long (anonymous namespace)::min_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="min_device_int">
+            <bounds>
+                <func name="int (anonymous namespace)::min_element_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
+    <sections label="inner_product">
+        <section target="cpu" label="inner_product_host_double">
+            <bounds>
+                <func name="double (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="inner_product_host_float">
+            <bounds>
+                <func name="float (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="inner_product_host_long">
+            <bounds>
+                <func name="long (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="cpu" label="inner_product_host_int">
+            <bounds>
+                <func name="int (anonymous namespace)::inner_product_work<(anonymous namespace)::host_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_double">
+            <bounds>
+                <func name="double (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_float">
+            <bounds>
+                <func name="float (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_long">
+            <bounds>
+                <func name="long (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+        <section target="gpu" label="inner_product_device_int">
+            <bounds>
+                <func name="int (anonymous namespace)::inner_product_work<(anonymous namespace)::device_placement"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+    </sections>
+
+</config>
