@@ -47,6 +47,38 @@ namespace
         DEFINE_CALLER(getrs);
         DEFINE_CALLER(tptri);
         DEFINE_CALLER(trtri);
+        DEFINE_CALLER(potrf);
+
+        template<typename It, typename Gen>
+        void fill_upper_triangular(It from, It to, std::size_t ld, Gen gen)
+        {
+            for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
+                for (auto entry = it; entry < it + nnz; entry++)
+                    *entry = gen();
+        }
+
+        template<typename Real>
+        std::vector<Real> upper_dd_matrix(std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            std::vector<Real> a(N * N);
+            fill_upper_triangular(a.begin(), a.end(), N, gen);
+            smp.do_sample();
+            {
+                // compute A = A + rand(N, 2N) * Identity(N, N)
+                // to guarantee that the matrix is diagonally dominant
+                std::uniform_real_distribution<Real> dist{
+                    static_cast<Real>(N),
+                    static_cast<Real>(2 * N)
+                };
+                for (auto [it, x] = std::pair{ a.begin(), 0 }; it < a.end(); it += N, ++x)
+                    *(it + x) += dist(engine);
+            }
+            return a;
+        }
 
         template<typename Real>
         void gesv_impl(std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -184,14 +216,6 @@ namespace
         template<typename Real>
         void trtri_impl(std::size_t N, std::mt19937_64& engine)
         {
-            // upper triangular in column-major is lower triangular in row-major
-            auto fill_upper_triangular = [](auto from, auto to, std::size_t ld, auto gen)
-            {
-                for (auto [it, nnz] = std::pair{ from, ld }; it < to; it += ld + 1, nnz--)
-                    for (auto entry = it; entry < it + nnz; entry++)
-                        *entry = gen();
-            };
-
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
             auto gen = [&]() { return dist(engine); };
 
@@ -200,8 +224,22 @@ namespace
             fill_upper_triangular(a.begin(), a.end(), N, gen);
 
             smp.do_sample();
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
             int res = trtri_caller<Real>::value(
                 LAPACK_COL_MAJOR, 'L', 'N', N, a.data(), N);
+            handle_error(res);
+        }
+
+        template<typename Real>
+        void potrf_impl(std::size_t N, std::mt19937_64& engine)
+        {
+            tp::sampler smp(g_tpr);
+            auto a = upper_dd_matrix<Real>(N, engine);
+            // upper triangular in row-major is lower triangular in column-major,
+            // therefore pass 'L' to function which expects a column-major format
+            int res = potrf_caller<Real>::value(
+                LAPACK_COL_MAJOR, 'L', N, a.data(), N);
             handle_error(res);
         }
     }
@@ -290,6 +328,18 @@ namespace
         detail::trtri_impl<float>(N, engine);
     }
 
+    __attribute__((noinline))
+        void dpotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::potrf_impl<double>(N, engine);
+    }
+
+    __attribute__((noinline))
+        void spotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    {
+        detail::potrf_impl<float>(N, engine);
+    }
+
     class cmdparams
     {
         using work_func = decltype(&dgesv);
@@ -335,7 +385,7 @@ namespace
                 util::to_scalar(argv[2], n);
                 util::to_scalar(argv[3], nrhs);
             }
-            else if (is_inversion(func))
+            else if (single_arg(func))
             {
                 if (argc < 3)
                 {
@@ -375,6 +425,11 @@ namespace
                 func == dtrtri || func == strtri;
         }
 
+        bool single_arg(work_func func)
+        {
+            return is_inversion(func) || func == dpotrf || func == spotrf;
+        }
+
         work_func get_work_func(const std::string& str)
         {
             if (str == "dgels")
@@ -405,6 +460,10 @@ namespace
                 return dgetrs;
             if (str == "sgetrs")
                 return sgetrs;
+            if (str == "dpotrf")
+                return dpotrf;
+            if (str == "spotrf")
+                return spotrf;
             return nullptr;
         }
 
@@ -415,6 +474,7 @@ namespace
                 << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs>\n"
                 << "\t" << prog << " {dgetri,sgetri} <n>\n"
                 << "\t" << prog << " {dtptri,stptri,dtrtri,strtri} <n>\n"
+                << "\t" << prog << " {dpotrf,spotrf} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
     };
@@ -432,5 +492,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
+        return 1;
     }
 }
