@@ -6,7 +6,7 @@
 
         <section target="cpu" label="dgemm_notrans">
             <bounds>
-                <func name="(anonymous namespace)::dgemm_notrans"/>
+                <func name="void (anonymous namespace)::detail::gemm_compute<(anonymous namespace)::detail::no_transpose, double>"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
@@ -15,7 +15,7 @@
 
         <section target="cpu" label="dgemm">
             <bounds>
-                <func name="(anonymous namespace)::dgemm("/>
+                <func name="void (anonymous namespace)::detail::gemm_compute<(anonymous namespace)::detail::transpose, double>"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
@@ -24,7 +24,7 @@
 
         <section target="cpu" label="sgemm_notrans">
             <bounds>
-                <func name="(anonymous namespace)::sgemm_notrans"/>
+                <func name="void (anonymous namespace)::detail::gemm_compute<(anonymous namespace)::detail::no_transpose, float>"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
@@ -33,7 +33,7 @@
 
         <section target="cpu" label="sgemm">
             <bounds>
-                <func name="(anonymous namespace)::sgemm("/>
+                <func name="void (anonymous namespace)::detail::gemm_compute<(anonymous namespace)::detail::transpose, float>"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
@@ -42,7 +42,7 @@
 
         <section target="cpu" label="dgemv">
             <bounds>
-                <func name="(anonymous namespace)::dgemv"/>
+                <func name="void (anonymous namespace)::detail::gemv_compute<double>"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>
@@ -51,7 +51,7 @@
 
         <section target="cpu" label="sgemv">
             <bounds>
-                <func name="(anonymous namespace)::sgemv"/>
+                <func name="void (anonymous namespace)::detail::gemv_compute<float>"/>
             </bounds>
             <allow_concurrency/>
             <method>profile</method>

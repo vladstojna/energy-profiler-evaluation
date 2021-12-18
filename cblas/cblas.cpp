@@ -9,9 +9,10 @@
 
 #include <algorithm>
 #include <cassert>
-#include <charconv>
 #include <random>
 #include <vector>
+
+#define NO_INLINE __attribute__((noinline))
 
 namespace
 {
@@ -31,8 +32,38 @@ namespace
         template<>
         struct gemm_caller<double> : func_obj<cblas_dgemm> {};
 
-        template<typename Real, CBLAS_TRANSPOSE Trans, auto Func = gemm_caller<Real>::value>
-        void gemm_impl(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+        template<typename>
+        struct gemv_caller {};
+
+        template<>
+        struct gemv_caller<float> : func_obj<cblas_sgemv> {};
+
+        template<>
+        struct gemv_caller<double> : func_obj<cblas_dgemv> {};
+
+        struct transpose : std::integral_constant<decltype(CblasTrans), CblasTrans> {};
+        struct no_transpose : std::integral_constant<decltype(CblasNoTrans), CblasNoTrans> {};
+
+        template<typename Transpose, typename Real>
+        NO_INLINE void gemm_compute(
+            std::size_t iters,
+            std::size_t M,
+            std::size_t N,
+            std::size_t K,
+            const Real* a,
+            const Real* b,
+            Real* c)
+        {
+            tp::sampler smp(g_tpr);
+            for (decltype(iters) i = 0; i < iters; i++)
+                gemm_caller<Real>::value(
+                    CblasRowMajor, CblasNoTrans, Transpose::value,
+                    M, N, K, 1.0, a, K, b, N, 0, c, N);
+        }
+
+        template<typename Real, typename Transpose>
+        void gemm_impl(
+            std::size_t M, std::size_t N, std::size_t K, std::size_t iters, std::mt19937_64& engine)
         {
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
@@ -43,59 +74,110 @@ namespace
             std::vector<Real> c(M * N);
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
+            gemm_compute<Transpose>(iters, M, N, K, a.data(), b.data(), c.data());
+        }
 
-            smp.do_sample();
-            Func(CblasRowMajor, CblasNoTrans, Trans,
-                M, N, K, 1.0,
-                a.data(), K,
-                b.data(), N,
-                0, c.data(), N
-            );
+        template<typename Real>
+        NO_INLINE void gemv_compute(
+            std::size_t iters,
+            std::size_t M,
+            std::size_t N,
+            const Real* a,
+            const Real* x,
+            Real* y)
+        {
+            tp::sampler smp(g_tpr);
+            for (decltype(iters) i = 0; i < iters; i++)
+                gemv_caller<Real>::value(
+                    CblasRowMajor, CblasNoTrans,
+                    M, N, 1.0, a, N, x, 1, 0, y, 1);
+        }
+
+        template<typename Real>
+        void gemv_impl(
+            std::size_t M, std::size_t N, std::size_t iters, std::mt19937_64& engine)
+        {
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            auto gen = [&]() { return dist(engine); };
+
+            tp::sampler smp(g_tpr);
+            std::vector<Real> a(M * N);
+            std::vector<Real> x(N);
+            std::vector<Real> y(M);
+            std::generate(a.begin(), a.end(), gen);
+            gemv_compute(iters, M, N, a.data(), x.data(), y.data());
         }
     }
 
-    __attribute__((noinline))
-        void dgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+#define DECLARE_FUNC(f) \
+    NO_INLINE void f(\
+        std::size_t, std::size_t, std::size_t, std::size_t, std::mt19937_64&)
+
+    DECLARE_FUNC(dgemm_notrans);
+    DECLARE_FUNC(dgemm);
+    DECLARE_FUNC(sgemm_notrans);
+    DECLARE_FUNC(sgemm);
+    DECLARE_FUNC(dgemv);
+    DECLARE_FUNC(sgemv);
+
+    void dgemm_notrans(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<double, CblasNoTrans>(M, N, K, engine);
+        detail::gemm_impl<double, detail::no_transpose>(M, N, K, iters, engine);
     }
 
-    __attribute__((noinline))
-        void dgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void dgemm(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<double, CblasTrans>(M, N, K, engine);
+        detail::gemm_impl<double, detail::transpose>(M, N, K, iters, engine);
     }
 
-    __attribute__((noinline))
-        void sgemm_notrans(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void sgemm_notrans(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<float, CblasNoTrans>(M, N, K, engine);
+        detail::gemm_impl<float, detail::no_transpose>(M, N, K, iters, engine);
     }
 
-    __attribute__((noinline))
-        void sgemm(std::size_t M, std::size_t N, std::size_t K, std::mt19937_64& engine)
+    void sgemm(
+        std::size_t M,
+        std::size_t N,
+        std::size_t K,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        detail::gemm_impl<float, CblasTrans>(M, N, K, engine);
+        detail::gemm_impl<float, detail::transpose>(M, N, K, iters, engine);
     }
 
-    __attribute__((noinline))
-        void dgemv(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    void dgemv(
+        std::size_t M,
+        std::size_t N,
+        std::size_t,
+        std::size_t iters,
+        std::mt19937_64& engine)
     {
-        std::uniform_real_distribution<double> dist{ 0.0, 1.0 };
-        auto gen = [&]() { return dist(engine); };
+        detail::gemv_impl<double>(M, N, iters, engine);
+    }
 
-        tp::sampler smp(g_tpr);
-        std::vector<double> a(M * N);
-        std::vector<double> x(N);
-        std::vector<double> y(M);
-        std::generate(a.begin(), a.end(), gen);
-
-        smp.do_sample();
-        cblas_dgemv(CblasRowMajor, CblasNoTrans,
-            M, N, 1.0,
-            a.data(), N,
-            x.data(), 1,
-            0, y.data(), 1);
+    void sgemv(
+        std::size_t M,
+        std::size_t N,
+        std::size_t,
+        std::size_t iters,
+        std::mt19937_64& engine)
+    {
+        detail::gemv_impl<float>(M, N, iters, engine);
     }
 
     struct cmdparams
@@ -104,6 +186,7 @@ namespace
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t k = 0;
+        std::size_t iters = 1;
         work_func func = nullptr;
 
         cmdparams(int argc, const char* const* argv)
@@ -121,9 +204,19 @@ namespace
                 });
 
             util::to_scalar(argv[2], m);
+            assert_positive(m, "m");
             util::to_scalar(argv[3], n);
+            assert_positive(n, "n");
             if (op_type == "dgemv")
+            {
                 func = dgemv;
+                get_iterations(argc, argv, 4);
+            }
+            else if (op_type == "sgemv")
+            {
+                func = sgemv;
+                get_iterations(argc, argv, 4);
+            }
             else
             {
                 if (argc < 5)
@@ -132,6 +225,7 @@ namespace
                     throw std::invalid_argument(op_type.append(": not enough arguments"));
                 }
                 util::to_scalar(argv[4], k);
+                assert_positive(k, "k");
                 if (op_type == "dgemm")
                     func = dgemm;
                 else if (op_type == "dgemm_notrans")
@@ -145,20 +239,37 @@ namespace
                     print_usage(argv[0]);
                     throw std::invalid_argument(std::string("invalid work type: ").append(op_type));
                 }
+                get_iterations(argc, argv, 5);
             }
             assert(func);
         }
 
         void do_work(std::mt19937_64& engine) const
         {
-            func(m, n, k, engine);
+            func(m, n, k, iters, engine);
         }
 
     private:
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
+        }
+
+        void get_iterations(int argc, const char* const* argv, int idx)
+        {
+            if (argc > idx)
+                util::to_scalar(argv[idx], iters);
+            assert_positive(iters, "iters");
+        }
+
         void print_usage(const char* prog)
         {
-            std::cerr << "Usage: " << prog
-                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans,dgemv} <m> <n> <k>\n";
+            std::cerr << "Usage:\n"
+                << "\t" << prog
+                << " {dgemm,dgemm_notrans,sgemm,sgemm_notrans} <m> <n> <k> <iters>\n"
+                << "\t" << prog << " {dgemv,sgemv} <m> <n> <iters>\n";
         }
     };
 }
@@ -175,5 +286,6 @@ int main(int argc, char** argv)
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
+        return 1;
     }
 }
