@@ -12,6 +12,8 @@
 #include <random>
 #include <vector>
 
+#define NO_INLINE __attribute__((noinline))
+
 namespace
 {
     tp::printer g_tpr;
@@ -244,98 +246,82 @@ namespace
         }
     }
 
-    __attribute__((noinline))
-        void dgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void dgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gesv_impl<double>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
-        void sgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void sgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gesv_impl<float>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
-        void dgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void dgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::getrs_impl<double>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
-        void sgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void sgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::getrs_impl<float>(N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
-        void dgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void dgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gels_impl<double>(M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
-        void sgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void sgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         detail::gels_impl<float>(M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
-        void dgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getri_impl<double>(N, engine);
     }
 
-    __attribute__((noinline))
-        void sgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void sgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getri_impl<float>(N, engine);
     }
 
-    __attribute__((noinline))
-        void dgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getrf_impl<double>(M, N, engine);
     }
 
-    __attribute__((noinline))
-        void sgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void sgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::getrf_impl<float>(M, N, engine);
     }
 
-    __attribute__((noinline))
-        void dtptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dtptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::tptri_impl<double>(N, engine);
     }
 
-    __attribute__((noinline))
-        void stptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void stptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::tptri_impl<float>(N, engine);
     }
 
-    __attribute__((noinline))
-        void dtrtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dtrtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::trtri_impl<double>(N, engine);
     }
 
-    __attribute__((noinline))
-        void strtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void strtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::trtri_impl<float>(N, engine);
     }
 
-    __attribute__((noinline))
-        void dpotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dpotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::potrf_impl<double>(N, engine);
     }
 
-    __attribute__((noinline))
-        void spotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void spotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
     {
         detail::potrf_impl<float>(N, engine);
     }
