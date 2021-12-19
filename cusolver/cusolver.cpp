@@ -402,8 +402,34 @@ namespace
             }
         #endif // CUDART_VERSION < 11010
 
-        #if CUDART_VERSION >= 11010
-            // cusolverDnXpotrf()
+        #if CUDART_VERSION < 11000
+            // cusolverDn<t>potrf()
+            template<typename Real>
+            NO_INLINE void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+            {
+                using call = potrf_call<Real>;
+                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                tp::sampler smp(g_tpr);
+                int info = 0;
+                int lwork;
+                util::device_buffer dev_info{ &info, &info + 1 };
+                auto status = call::query(handle, uplo, N, a, N, &lwork);
+                if (status != CUSOLVER_STATUS_SUCCESS)
+                    cusolver_error(call::query_str, status);
+
+                smp.do_sample();
+
+                util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+
+                status = call::compute(
+                    handle, uplo, N, a, N, dev_work.get(), lwork, dev_info.get());
+                if (status != CUSOLVER_STATUS_SUCCESS)
+                    cusolver_error(call::compute_str, status);
+
+                util::copy(dev_info, 1, &info);
+                handle_error(info);
+            }
+        #elif CUDART_VERSION >= 11010
             template<typename Real>
             NO_INLINE void potrf(
                 cusolverdn_handle& handle, std::size_t N, Real* a)
@@ -443,7 +469,7 @@ namespace
                 util::copy(dev_info, 1, &info);
                 handle_error(info);
             }
-        #elif CUDART_VERSION >= 11000
+        #else // CUDART_VERSION >= 11000
             // cusolverDnPotrf()
             template<typename Real>
             NO_INLINE void potrf(
@@ -477,34 +503,7 @@ namespace
                 util::copy(dev_info, 1, &info);
                 handle_error(info);
             }
-        #else // CUDART_VERSION < 11000
-            // cusolverDn<t>potrf()
-            template<typename Real>
-            void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
-            {
-                using call = potrf_call<Real>;
-                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
-                tp::sampler smp(g_tpr);
-                int info = 0;
-                int lwork;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = call::query(handle, uplo, N, a, N, &lwork);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-
-                status = call::compute(
-                    handle, uplo, N, a, N, dev_work.get(), lwork, dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-            }
-        #endif // CUDART_VERSION >= 11010
+        #endif // CUDART_VERSION < 11000
 
         #if CUDART_VERSION < 10020
             template<typename Real>
@@ -688,7 +687,7 @@ namespace
         {
             compute::gesv<Real>(handle, 0, 0, nullptr, nullptr, nullptr, nullptr);
         }
-    #else
+    #else // CUDART_VERSION >= 10020
         template<typename Real>
         void gesv_impl(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
@@ -723,7 +722,7 @@ namespace
         {
             compute::gels<Real>(handle, 0, 0, 0, nullptr, nullptr, nullptr);
         }
-    #else
+    #else // CUDART_VERSION >= 11000
         template<typename Real>
         void gels_impl(
             cusolverdn_handle& handle,
