@@ -10,6 +10,8 @@
 #include <cassert>
 #include <random>
 
+#define NO_INLINE __attribute__((noinline))
+
 namespace
 {
     tp::printer g_tpr;
@@ -718,59 +720,59 @@ namespace
         }
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int dtrtri(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
     {
         return detail::trtri_impl<double>(handle, N, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int strtri(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
     {
         return detail::trtri_impl<float>(handle, N, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int dgetrf(cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
     {
         return detail::getrf_impl<double>(handle, M, N, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int sgetrf(cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
     {
         return detail::getrf_impl<float>(handle, M, N, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int dgetrs(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         return detail::getrs_impl<double>(handle, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int sgetrs(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         return detail::getrs_impl<float>(handle, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int dgesv(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         return detail::gesv_impl<double>(handle, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int sgesv(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
     {
         return detail::gesv_impl<float>(handle, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int dgels(
             cusolverdn_handle& handle, std::size_t M, std::size_t N,
             std::size_t Nrhs, std::mt19937_64& engine)
@@ -778,7 +780,7 @@ namespace
         return detail::gels_impl<double>(handle, M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int sgels(
             cusolverdn_handle& handle, std::size_t M, std::size_t N,
             std::size_t Nrhs, std::mt19937_64& engine)
@@ -786,13 +788,13 @@ namespace
         return detail::gels_impl<float>(handle, M, N, Nrhs, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int dpotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
     {
         return detail::potrf_impl<double>(handle, N, engine);
     }
 
-    __attribute__((noinline))
+    NO_INLINE
         int spotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
     {
         return detail::potrf_impl<float>(handle, N, engine);
