@@ -12,6 +12,10 @@
 
 #define NO_INLINE __attribute__((noinline))
 
+#if CUDART_VERSION < 11000
+#define NO_IPA __attribute__((noipa))
+#endif // CUDART_VERSION < 11000
+
 namespace
 {
     tp::printer g_tpr;
@@ -501,6 +505,115 @@ namespace
                 handle_error(info);
             }
         #endif // CUDART_VERSION >= 11010
+
+        #if CUDART_VERSION < 10020
+            template<typename Real>
+            NO_IPA void gesv(
+                cusolverdn_handle&,
+                std::size_t,
+                std::size_t,
+                Real*,
+                Real*,
+                Real*,
+                cusolver_int_t*)
+            {
+                throw std::runtime_error(
+                    unsupported_version("cusolverDn<t1><t2>gesv()", "10.2"));
+            }
+        #else // CUDART_VERSION >= 10020
+            template<typename Real>
+            NO_INLINE void gesv(
+                cusolverdn_handle& handle,
+                std::size_t N,
+                std::size_t Nrhs,
+                Real* a,
+                Real* b,
+                Real* x,
+                cusolver_int_t* ipiv)
+            {
+                using call = gesv_call<Real>;
+                tp::sampler smp(g_tpr);
+                cusolver_int_t info = 0;
+                std::size_t work_bytes;
+                util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
+                auto status = call::query(handle, N, Nrhs,
+                    nullptr, N, nullptr, nullptr, N, nullptr, N, nullptr, &work_bytes);
+                if (status != CUSOLVER_STATUS_SUCCESS)
+                    cusolver_error(call::query_str, status);
+
+                smp.do_sample();
+
+                cusolver_int_t iters;
+                util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+                status = call::compute(handle, N, Nrhs,
+                    a, N,
+                    ipiv,
+                    b, N,
+                    x, N,
+                    dev_work.get(), work_bytes,
+                    &iters,
+                    dev_info.get());
+                if (status != CUSOLVER_STATUS_SUCCESS)
+                    cusolver_error(call::compute_str, status);
+                util::copy(dev_info, 1, &info);
+                handle_error(info);
+                std::cerr << "iterations = " << iters << "\n";
+            }
+        #endif // CUDART_VERSION < 10020
+
+        #if CUDART_VERSION < 11000
+            template<typename Real>
+            NO_IPA void gels(
+                cusolverdn_handle&,
+                std::size_t,
+                std::size_t,
+                std::size_t,
+                Real*,
+                Real*,
+                Real*)
+            {
+                throw std::runtime_error(
+                    unsupported_version("cusolverDn<t1><t2>gels()", "11.0"));
+            }
+        #else // CUDART_VERSION >= 11000
+            template<typename Real>
+            NO_INLINE void gels(
+                cusolverdn_handle& handle,
+                std::size_t M,
+                std::size_t N,
+                std::size_t Nrhs,
+                Real* a,
+                Real* b,
+                Real* x)
+            {
+                using call = gels_call<Real>;
+                tp::sampler smp(g_tpr);
+                std::size_t work_bytes;
+                cusolver_int_t info = 0;
+                util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
+                auto status = call::query(handle, M, N, Nrhs,
+                    nullptr, M, nullptr, M, nullptr, N, nullptr, &work_bytes);
+                if (status != CUSOLVER_STATUS_SUCCESS)
+                    cusolver_error(call::query_str, status);
+
+                smp.do_sample();
+
+                cusolver_int_t iters;
+                util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+                status = call::compute(handle, M, N, Nrhs,
+                    a, M,
+                    b, M,
+                    x, N,
+                    dev_work.get(), work_bytes,
+                    &iters,
+                    dev_info.get());
+                if (status != CUSOLVER_STATUS_SUCCESS)
+                    cusolver_error(call::compute_str, status);
+                util::copy(dev_info, 1, &info);
+                handle_error(info);
+                std::cerr << "iterations = " << iters << "\n";
+            }
+        #endif // CUDART_VERSION < 11000
         }
 
         template<typename Real>
@@ -571,26 +684,22 @@ namespace
 
     #if CUDART_VERSION < 10020
         template<typename Real>
-        void gesv_impl(cusolverdn_handle&, std::size_t, std::size_t, std::mt19937_64&)
+        void gesv_impl(cusolverdn_handle& handle, std::size_t, std::size_t, std::mt19937_64&)
         {
-            throw std::runtime_error(unsupported_version("cusolverDn<t1><t2>gesv()", "10.2"));
+            compute::gesv<Real>(handle, 0, 0, nullptr, nullptr, nullptr, nullptr);
         }
     #else
         template<typename Real>
         void gesv_impl(
             cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
         {
-            using call = gesv_call<Real>;
-
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
-
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             util::buffer<Real> a{ N * N };
             util::buffer<Real> b{ N * Nrhs };
             util::buffer<Real> x{ N * Nrhs };
             util::buffer<cusolver_int_t> ipiv{ N };
+            auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
@@ -600,39 +709,7 @@ namespace
             util::device_buffer dev_b{ b.begin(), b.end() };
             util::device_buffer<Real> dev_x{ x.size() };
             util::device_buffer<cusolver_int_t> dev_ipiv{ ipiv.size() };
-
-            smp.do_sample();
-
-            std::size_t work_bytes;
-            auto status = call::query(handle, N, Nrhs,
-                nullptr, N, nullptr, nullptr, N, nullptr, N, nullptr, &work_bytes);
-            if (status != CUSOLVER_STATUS_SUCCESS)
-                cusolver_error(call::query_str, status);
-
-            smp.do_sample();
-
-            cusolver_int_t iters;
-            cusolver_int_t info = 0;
-            util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
-            util::device_buffer<std::uint8_t> dev_work{ work_bytes };
-
-            status = call::compute(handle, N, Nrhs,
-                dev_a.get(), N,
-                dev_ipiv.get(),
-                dev_b.get(), N,
-                dev_x.get(), N,
-                dev_work.get(), work_bytes,
-                &iters,
-                dev_info.get());
-            if (status != CUSOLVER_STATUS_SUCCESS)
-                cusolver_error(call::compute_str, status);
-            cudaDeviceSynchronize();
-
-            smp.do_sample();
-
-            std::cerr << "iterations = " << iters << "\n";
-            util::copy(dev_info, 1, &info);
-            handle_error(info);
+            compute::gesv(handle, N, Nrhs, dev_a.get(), dev_b.get(), dev_x.get(), ipiv.get());
             util::copy(dev_x, dev_x.size(), x.begin());
             util::copy(dev_ipiv, dev_ipiv.size(), ipiv.begin());
             util::copy(dev_a, dev_a.size(), a.begin());
@@ -641,27 +718,27 @@ namespace
 
     #if CUDART_VERSION < 11000
         template<typename Real>
-        void gels_impl(cusolverdn_handle&, std::size_t, std::size_t, std::size_t, std::mt19937_64&)
+        void gels_impl(
+            cusolverdn_handle& handle, std::size_t, std::size_t, std::size_t, std::mt19937_64&)
         {
-            throw std::runtime_error(unsupported_version("cusolverDn<t1><t2>gels()", "11.0"));
+            compute::gels<Real>(handle, 0, 0, 0, nullptr, nullptr, nullptr);
         }
     #else
         template<typename Real>
         void gels_impl(
-            cusolverdn_handle& handle, std::size_t M, std::size_t N,
-            std::size_t Nrhs, std::mt19937_64& engine)
+            cusolverdn_handle& handle,
+            std::size_t M,
+            std::size_t N,
+            std::size_t Nrhs,
+            std::mt19937_64& engine)
         {
-            using call = gels_call<Real>;
-
             assert(N <= M);
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
-
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             util::buffer<Real> a{ M * N };
             util::buffer<Real> b{ M * Nrhs };
             util::buffer<Real> x{ N * Nrhs };
+            auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
 
@@ -670,38 +747,7 @@ namespace
             util::device_buffer dev_a{ a.begin(), a.end() };
             util::device_buffer dev_b{ b.begin(), b.end() };
             util::device_buffer<Real> dev_x{ x.size() };
-
-            smp.do_sample();
-
-            std::size_t work_bytes;
-            auto status = call::query(handle, M, N, Nrhs,
-                nullptr, M, nullptr, M, nullptr, N, nullptr, &work_bytes);
-            if (status != CUSOLVER_STATUS_SUCCESS)
-                cusolver_error(call::query_str, status);
-
-            smp.do_sample();
-
-            cusolver_int_t iters;
-            cusolver_int_t info = 0;
-            util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
-            util::device_buffer<std::uint8_t> dev_work{ work_bytes };
-
-            status = call::compute(handle, M, N, Nrhs,
-                dev_a.get(), M,
-                dev_b.get(), M,
-                dev_x.get(), N,
-                dev_work.get(), work_bytes,
-                &iters,
-                dev_info.get());
-            if (status != CUSOLVER_STATUS_SUCCESS)
-                cusolver_error(call::compute_str, status);
-            cudaDeviceSynchronize();
-
-            smp.do_sample();
-
-            std::cerr << "iterations = " << iters << "\n";
-            util::copy(dev_info, 1, &info);
-            handle_error(info);
+            compute::gels(handle, M, N, Nrhs, dev_a.get(), dev_b.get(), dev_x.get());
             util::copy(dev_x, dev_x.size(), x.begin());
             util::copy(dev_a, dev_a.size(), a.begin());
         }
