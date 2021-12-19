@@ -94,6 +94,24 @@
             <interval>100</interval>
         </section>
 
+        <section target="cpu,gpu" label="dpotrf">
+            <bounds>
+                <func name="(anonymous namespace)::dpotrf"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu,gpu" label="spotrf">
+            <bounds>
+                <func name="(anonymous namespace)::spotrf"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
     </sections>
 
 </config>
