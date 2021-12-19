@@ -849,25 +849,10 @@ namespace
         detail::potrf_impl<float>(handle, p.N, engine);
     }
 
-    enum class work_type
-    {
-        dtrtri,
-        strtri,
-        dgetrf,
-        sgetrf,
-        dgetrs,
-        sgetrs,
-        dgesv,
-        sgesv,
-        dgels,
-        sgels,
-        dpotrf,
-        spotrf,
-    };
-
     struct cmdargs
     {
-        work_type wtype = static_cast<work_type>(0);
+        using work_func = decltype(&dtrtri);
+        work_func func = nullptr;
         compute_params params = {};
 
         cmdargs(int argc, const char* const* argv)
@@ -881,8 +866,8 @@ namespace
             std::string op_type(argv[1]);
             std::transform(op_type.begin(), op_type.end(), op_type.begin(),
                 [](unsigned char c) { return std::tolower(c); });
-            wtype = get_work_type(op_type);
-            if (wtype == work_type::dgetrf || wtype == work_type::sgetrf)
+            func = get_work_type(op_type);
+            if (func == dgetrf || func == sgetrf)
             {
                 if (argc < 4)
                     throw_too_few(prog, op_type);
@@ -891,8 +876,8 @@ namespace
                 util::to_scalar(argv[3], params.N);
                 check_positive(params.N, "n");
             }
-            else if (wtype == work_type::dgetrs || wtype == work_type::sgetrs ||
-                wtype == work_type::dgesv || wtype == work_type::sgesv)
+            else if (func == dgetrs || func == sgetrs ||
+                func == dgesv || func == sgesv)
             {
                 if (argc < 4)
                     throw_too_few(prog, op_type);
@@ -901,7 +886,7 @@ namespace
                 util::to_scalar(argv[3], params.Nrhs);
                 check_positive(params.Nrhs, "n_rhs");
             }
-            else if (wtype == work_type::dgels || wtype == work_type::sgels)
+            else if (func == dgels || func == sgels)
             {
                 if (argc < 5)
                     throw_too_few(prog, op_type);
@@ -914,8 +899,8 @@ namespace
                 if (params.N > params.M)
                     throw std::invalid_argument("n must not be greater than m");
             }
-            else if (wtype == work_type::dtrtri || wtype == work_type::strtri ||
-                wtype == work_type::dpotrf || wtype == work_type::spotrf)
+            else if (func == dtrtri || func == strtri ||
+                func == dpotrf || func == spotrf)
             {
                 if (argc < 3)
                     throw_too_few(prog, op_type);
@@ -939,11 +924,11 @@ namespace
             throw std::invalid_argument(op_type.append(": too few arguments"));
         }
 
-        static work_type get_work_type(const std::string& op_type)
+        static work_func get_work_type(const std::string& op_type)
         {
         #define WORK_RETURN_IF(op_type, arg) \
             if (op_type == #arg) \
-                return work_type::arg
+                return arg
 
             WORK_RETURN_IF(op_type, dtrtri);
             WORK_RETURN_IF(op_type, strtri);
@@ -971,36 +956,6 @@ namespace
                 << "\t" << prog << " {dgels,sgels} <n> <m> <n_rhs>\n";
         }
     };
-
-    void execute_work(
-        cusolverdn_handle& handle,
-        work_type wtype,
-        const compute_params& params,
-        std::mt19937_64& gen)
-    {
-    #define CASE_WORK(name, h, p, g) \
-        case work_type::name: \
-            std::cerr << #name " " << p << "\n"; \
-            name(h, p, g); \
-            return
-
-        switch (wtype)
-        {
-            CASE_WORK(dtrtri, handle, params, gen);
-            CASE_WORK(strtri, handle, params, gen);
-            CASE_WORK(dpotrf, handle, params, gen);
-            CASE_WORK(spotrf, handle, params, gen);
-            CASE_WORK(dgetrf, handle, params, gen);
-            CASE_WORK(sgetrf, handle, params, gen);
-            CASE_WORK(dgetrs, handle, params, gen);
-            CASE_WORK(sgetrs, handle, params, gen);
-            CASE_WORK(dgesv, handle, params, gen);
-            CASE_WORK(sgesv, handle, params, gen);
-            CASE_WORK(dgels, handle, params, gen);
-            CASE_WORK(sgels, handle, params, gen);
-        }
-        throw std::runtime_error("Invalid work type");
-    }
 }
 
 int main(int argc, char** argv)
@@ -1011,7 +966,7 @@ int main(int argc, char** argv)
         std::random_device rnd_dev;
         std::mt19937_64 engine{ rnd_dev() };
         cusolverdn_handle handle{ cusolverdn_create() };
-        execute_work(handle, args.wtype, args.params, engine);
+        args.func(handle, args.params, engine);
     }
     catch (const std::exception& e)
     {
