@@ -16,6 +16,24 @@ namespace
 {
     tp::printer g_tpr;
 
+    struct compute_params
+    {
+        std::size_t M = 0;
+        std::size_t N = 0;
+        std::size_t Nrhs = 0;
+    };
+
+    std::ostream& operator<<(std::ostream& os, const compute_params& p)
+    {
+        if (p.M)
+            os << "M=" << p.M << " ";
+        if (p.N)
+            os << "N=" << p.N << " ";
+        if (p.Nrhs)
+            os << "Nrhs=" << p.Nrhs << " ";
+        return os;
+    }
+
     template<auto Func>
     struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
@@ -720,84 +738,100 @@ namespace
         }
     }
 
-    NO_INLINE
-        int dtrtri(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    NO_INLINE int dtrtri(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::trtri_impl<double>(handle, N, engine);
+        return detail::trtri_impl<double>(handle, p.N, engine);
     }
 
-    NO_INLINE
-        int strtri(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    NO_INLINE int strtri(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::trtri_impl<float>(handle, N, engine);
+        return detail::trtri_impl<float>(handle, p.N, engine);
     }
 
-    NO_INLINE
-        int dgetrf(cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+    NO_INLINE int dgetrf(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::getrf_impl<double>(handle, M, N, engine);
+        return detail::getrf_impl<double>(handle, p.M, p.N, engine);
     }
 
-    NO_INLINE
-        int sgetrf(cusolverdn_handle& handle, std::size_t M, std::size_t N, std::mt19937_64& engine)
+    NO_INLINE int sgetrf(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::getrf_impl<float>(handle, M, N, engine);
+        return detail::getrf_impl<float>(handle, p.M, p.N, engine);
     }
 
-    NO_INLINE
-        int dgetrs(
-            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE int dgetrs(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::getrs_impl<double>(handle, N, Nrhs, engine);
+        return detail::getrs_impl<double>(handle, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE
-        int sgetrs(
-            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE int sgetrs(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::getrs_impl<float>(handle, N, Nrhs, engine);
+        return detail::getrs_impl<float>(handle, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE
-        int dgesv(
-            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE int dgesv(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::gesv_impl<double>(handle, N, Nrhs, engine);
+        return detail::gesv_impl<double>(handle, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE
-        int sgesv(
-            cusolverdn_handle& handle, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE int sgesv(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::gesv_impl<float>(handle, N, Nrhs, engine);
+        return detail::gesv_impl<float>(handle, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE
-        int dgels(
-            cusolverdn_handle& handle, std::size_t M, std::size_t N,
-            std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE int dgels(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::gels_impl<double>(handle, M, N, Nrhs, engine);
+        return detail::gels_impl<double>(handle, p.M, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE
-        int sgels(
-            cusolverdn_handle& handle, std::size_t M, std::size_t N,
-            std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE int sgels(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::gels_impl<float>(handle, M, N, Nrhs, engine);
+        return detail::gels_impl<float>(handle, p.M, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE
-        int dpotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    NO_INLINE int dpotrf(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::potrf_impl<double>(handle, N, engine);
+        return detail::potrf_impl<double>(handle, p.N, engine);
     }
 
-    NO_INLINE
-        int spotrf(cusolverdn_handle& handle, std::size_t N, std::mt19937_64& engine)
+    NO_INLINE int spotrf(
+        cusolverdn_handle& handle,
+        const compute_params& p,
+        std::mt19937_64& engine)
     {
-        return detail::potrf_impl<float>(handle, N, engine);
+        return detail::potrf_impl<float>(handle, p.N, engine);
     }
 
     enum class work_type
@@ -818,10 +852,8 @@ namespace
 
     struct cmdargs
     {
-        std::size_t m = 0;
-        std::size_t n = 0;
-        std::size_t nrhs = 0;
         work_type wtype = static_cast<work_type>(0);
+        compute_params params = {};
 
         cmdargs(int argc, const char* const* argv)
         {
@@ -839,32 +871,32 @@ namespace
             {
                 if (argc < 4)
                     throw_too_few(prog, op_type);
-                util::to_scalar(argv[2], m);
-                check_positive(m, "m");
-                util::to_scalar(argv[3], n);
-                check_positive(n, "n");
+                util::to_scalar(argv[2], params.M);
+                check_positive(params.M, "m");
+                util::to_scalar(argv[3], params.N);
+                check_positive(params.N, "n");
             }
             else if (wtype == work_type::dgetrs || wtype == work_type::sgetrs ||
                 wtype == work_type::dgesv || wtype == work_type::sgesv)
             {
                 if (argc < 4)
                     throw_too_few(prog, op_type);
-                util::to_scalar(argv[2], n);
-                check_positive(n, "n");
-                util::to_scalar(argv[3], nrhs);
-                check_positive(nrhs, "n_rhs");
+                util::to_scalar(argv[2], params.N);
+                check_positive(params.N, "n");
+                util::to_scalar(argv[3], params.Nrhs);
+                check_positive(params.Nrhs, "n_rhs");
             }
             else if (wtype == work_type::dgels || wtype == work_type::sgels)
             {
                 if (argc < 5)
                     throw_too_few(prog, op_type);
-                util::to_scalar(argv[2], m);
-                check_positive(m, "m");
-                util::to_scalar(argv[3], n);
-                check_positive(n, "n");
-                util::to_scalar(argv[4], nrhs);
-                check_positive(nrhs, "n_rhs");
-                if (n > m)
+                util::to_scalar(argv[2], params.M);
+                check_positive(params.M, "m");
+                util::to_scalar(argv[3], params.N);
+                check_positive(params.N, "n");
+                util::to_scalar(argv[4], params.Nrhs);
+                check_positive(params.Nrhs, "n_rhs");
+                if (params.N > params.M)
                     throw std::invalid_argument("n must not be greater than m");
             }
             else if (wtype == work_type::dtrtri || wtype == work_type::strtri ||
@@ -872,8 +904,8 @@ namespace
             {
                 if (argc < 3)
                     throw_too_few(prog, op_type);
-                util::to_scalar(argv[2], n);
-                check_positive(n, "n");
+                util::to_scalar(argv[2], params.N);
+                check_positive(params.N, "n");
             }
         }
 
@@ -925,46 +957,31 @@ namespace
         }
     };
 
-    int execute_work(const cmdargs& args, cusolverdn_handle& handle, std::mt19937_64& gen)
+    int execute_work(
+        cusolverdn_handle& handle,
+        work_type wtype,
+        const compute_params& params,
+        std::mt19937_64& gen)
     {
-        switch (args.wtype)
+    #define CASE_WORK(name, h, p, g) \
+        case work_type::name: \
+            std::cerr << #name " " << p << "\n"; \
+            return name(h, p, g)
+
+        switch (wtype)
         {
-        case work_type::dtrtri:
-            std::cerr << "dtrtri N=" << args.n << "\n";
-            return dtrtri(handle, args.n, gen);
-        case work_type::strtri:
-            std::cerr << "strtri N=" << args.n << "\n";
-            return strtri(handle, args.n, gen);
-        case work_type::dpotrf:
-            std::cerr << "dpotrf N=" << args.n << "\n";
-            return dpotrf(handle, args.n, gen);
-        case work_type::spotrf:
-            std::cerr << "spotrf N=" << args.n << "\n";
-            return spotrf(handle, args.n, gen);
-        case work_type::dgetrf:
-            std::cerr << "dgetrf M=" << args.m << ", N=" << args.n << "\n";
-            return dgetrf(handle, args.m, args.n, gen);
-        case work_type::sgetrf:
-            std::cerr << "sgetrf M=" << args.m << ", N=" << args.n << "\n";
-            return sgetrf(handle, args.m, args.n, gen);
-        case work_type::dgetrs:
-            std::cerr << "dgetrs N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
-            return dgetrs(handle, args.n, args.nrhs, gen);
-        case work_type::sgetrs:
-            std::cerr << "sgetrs N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
-            return sgetrs(handle, args.n, args.nrhs, gen);
-        case work_type::dgesv:
-            std::cerr << "dgesv N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
-            return dgesv(handle, args.n, args.nrhs, gen);
-        case work_type::sgesv:
-            std::cerr << "sgesv N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
-            return sgesv(handle, args.n, args.nrhs, gen);
-        case work_type::dgels:
-            std::cerr << "dgels M=" << args.m << ", N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
-            return dgels(handle, args.m, args.n, args.nrhs, gen);
-        case work_type::sgels:
-            std::cerr << "sgels M=" << args.m << ", N=" << args.n << ", Nrhs=" << args.nrhs << "\n";
-            return sgels(handle, args.m, args.n, args.nrhs, gen);
+            CASE_WORK(dtrtri, handle, params, gen);
+            CASE_WORK(strtri, handle, params, gen);
+            CASE_WORK(dpotrf, handle, params, gen);
+            CASE_WORK(spotrf, handle, params, gen);
+            CASE_WORK(dgetrf, handle, params, gen);
+            CASE_WORK(sgetrf, handle, params, gen);
+            CASE_WORK(dgetrs, handle, params, gen);
+            CASE_WORK(sgetrs, handle, params, gen);
+            CASE_WORK(dgesv, handle, params, gen);
+            CASE_WORK(sgesv, handle, params, gen);
+            CASE_WORK(dgels, handle, params, gen);
+            CASE_WORK(sgels, handle, params, gen);
         }
         throw std::runtime_error("Invalid work type");
     }
@@ -988,7 +1005,7 @@ int main(int argc, char** argv)
         std::random_device rnd_dev;
         std::mt19937_64 engine{ rnd_dev() };
         cusolverdn_handle handle{ cusolverdn_create() };
-        handle_info(execute_work(args, handle, engine));
+        handle_info(execute_work(handle, args.wtype, args.params, engine));
     }
     catch (const std::exception& e)
     {
