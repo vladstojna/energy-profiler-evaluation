@@ -800,31 +800,28 @@ namespace
         return detail::potrf_impl<float>(handle, N, engine);
     }
 
-    namespace work_type
+    enum class work_type
     {
-        enum type
-        {
-            dtrtri,
-            strtri,
-            dgetrf,
-            sgetrf,
-            dgetrs,
-            sgetrs,
-            dgesv,
-            sgesv,
-            dgels,
-            sgels,
-            dpotrf,
-            spotrf,
-        };
-    }
+        dtrtri,
+        strtri,
+        dgetrf,
+        sgetrf,
+        dgetrs,
+        sgetrs,
+        dgesv,
+        sgesv,
+        dgels,
+        sgels,
+        dpotrf,
+        spotrf,
+    };
 
     struct cmdargs
     {
         std::size_t m = 0;
         std::size_t n = 0;
         std::size_t nrhs = 0;
-        work_type::type wtype = static_cast<work_type::type>(0);
+        work_type wtype = static_cast<work_type>(0);
 
         cmdargs(int argc, const char* const* argv)
         {
@@ -838,8 +835,6 @@ namespace
             std::transform(op_type.begin(), op_type.end(), op_type.begin(),
                 [](unsigned char c) { return std::tolower(c); });
             wtype = get_work_type(op_type);
-            assert(wtype);
-
             if (wtype == work_type::dgetrf || wtype == work_type::sgetrf)
             {
                 if (argc < 4)
@@ -897,7 +892,7 @@ namespace
             throw std::invalid_argument(op_type.append(": too few arguments"));
         }
 
-        static work_type::type get_work_type(const std::string& op_type)
+        static work_type get_work_type(const std::string& op_type)
         {
         #define WORK_RETURN_IF(op_type, arg) \
             if (op_type == #arg) \
@@ -915,7 +910,8 @@ namespace
             WORK_RETURN_IF(op_type, sgels);
             WORK_RETURN_IF(op_type, dpotrf);
             WORK_RETURN_IF(op_type, spotrf);
-            throw std::invalid_argument(std::string("Unknown work type ").append(op_type));
+            throw std::invalid_argument(std::string("Unknown work type ")
+                .append(op_type));
         }
 
         static void usage(const char* prog)
