@@ -5,18 +5,25 @@
 #endif
 
 #include <timeprinter/printer.hpp>
+#include <util/buffer.hpp>
 #include <util/to_scalar.hpp>
 
 #include <algorithm>
 #include <cassert>
 #include <random>
-#include <vector>
 
 #define NO_INLINE __attribute__((noinline))
 
 namespace
 {
     tp::printer g_tpr;
+
+    struct compute_params
+    {
+        std::size_t N = 0;
+        std::size_t M = 0;
+        std::size_t Nrhs = 0;
+    };
 
     namespace detail
     {
@@ -60,13 +67,14 @@ namespace
         }
 
         template<typename Real>
-        std::vector<Real> upper_dd_matrix(std::size_t N, std::mt19937_64& engine)
+        util::buffer<Real> upper_dd_matrix(std::size_t N, std::mt19937_64& engine)
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
             auto gen = [&]() { return dist(engine); };
 
-            std::vector<Real> a(N * N);
+            util::buffer<Real> a{ N * N };
+            std::fill(a.begin(), a.end(), Real{});
             fill_upper_triangular(a.begin(), a.end(), N, gen);
             smp.do_sample();
             {
@@ -112,9 +120,9 @@ namespace
                     'N', M, N, Nrhs, a, M, b, std::max(N, M), &workspace_query, -1);
                 handle_error(res);
                 smp.do_sample();
-                std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
+                util::buffer<Real> work{ static_cast<std::uint64_t>(workspace_query) };
                 res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
-                    'N', M, N, Nrhs, a, M, b, std::max(N, M), work.data(), work.size());
+                    'N', M, N, Nrhs, a, M, b, std::max(N, M), work.get(), work.size());
                 handle_error(res);
             }
 
@@ -140,9 +148,9 @@ namespace
                     N, a, N, ipiv, &workspace_query, -1);
                 handle_error(res);
                 smp.do_sample();
-                std::vector<Real> work(static_cast<std::uint64_t>(workspace_query));
+                util::buffer<Real> work{ static_cast<std::uint64_t>(workspace_query) };
                 res = getri_caller<Real>::value(
-                    LAPACK_COL_MAJOR, N, a, N, ipiv, work.data(), work.size());
+                    LAPACK_COL_MAJOR, N, a, N, ipiv, work.get(), work.size());
                 handle_error(res);
             }
 
@@ -197,13 +205,13 @@ namespace
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            std::vector<Real> a(N * N);
-            std::vector<Real> b(N * Nrhs);
-            std::vector<lapack_int> ipiv(N);
+            util::buffer<Real> a{ N * N };
+            util::buffer<Real> b{ N * Nrhs };
+            util::buffer<lapack_int> ipiv{ N };
             auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-            compute::gesv(a.data(), b.data(), ipiv.data(), N, Nrhs);
+            compute::gesv(a.get(), b.get(), ipiv.get(), N, Nrhs);
         }
 
         template<typename Real>
@@ -211,12 +219,12 @@ namespace
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            std::vector<Real> a(M * N);
-            std::vector<Real> b(std::max(N, M) * Nrhs);
+            util::buffer<Real> a{ M * N };
+            util::buffer<Real> b{ std::max(N, M) * Nrhs };
             auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-            compute::gels(a.data(), b.data(), M, N, Nrhs);
+            compute::gels(a.get(), b.get(), M, N, Nrhs);
         }
 
         template<typename Real>
@@ -224,24 +232,23 @@ namespace
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            std::vector<Real> a(N * N);
-            std::vector<lapack_int> ipiv(N);
+            util::buffer<Real> a{ N * N };
+            util::buffer<lapack_int> ipiv{ N };
             std::generate(a.begin(), a.end(), [&]() { return dist(engine); });
-            compute::getrf(a.data(), ipiv.data(), N, N);
-            compute::getri(a.data(), ipiv.data(), N);
+            compute::getrf(a.get(), ipiv.get(), N, N);
+            compute::getri(a.get(), ipiv.get(), N);
         }
 
         template<typename Real>
         void getrf_impl(std::size_t M, std::size_t N, std::mt19937_64& engine)
         {
-            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            auto gen = [&]() { return dist(engine); };
-
             tp::sampler smp(g_tpr);
-            std::vector<Real> a(M * N);
-            std::vector<lapack_int> ipiv(std::min(M, N));
+            std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
+            util::buffer<Real> a{ M * N };
+            util::buffer<lapack_int> ipiv{ std::min(M, N) };
+            auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
-            compute::getrf(a.data(), ipiv.data(), M, N);
+            compute::getrf(a.get(), ipiv.get(), M, N);
         }
 
         template<typename Real>
@@ -249,14 +256,14 @@ namespace
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 0.0, 1.0 };
-            std::vector<Real> a(N * N);
-            std::vector<Real> b(N * Nrhs);
-            std::vector<lapack_int> ipiv(N);
+            util::buffer<Real> a{ N * N };
+            util::buffer<Real> b{ N * Nrhs };
+            util::buffer<lapack_int> ipiv{ N };
             auto gen = [&]() { return dist(engine); };
             std::generate(a.begin(), a.end(), gen);
             std::generate(b.begin(), b.end(), gen);
-            compute::getrf(a.data(), ipiv.data(), N, N);
-            compute::getrs(a.data(), b.data(), ipiv.data(), N, Nrhs);
+            compute::getrf(a.get(), ipiv.get(), N, N);
+            compute::getrs(a.get(), b.get(), ipiv.get(), N, Nrhs);
         }
 
         template<typename Real>
@@ -264,10 +271,10 @@ namespace
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
-            std::vector<Real> a_packed(N * (N + 1) / 2);
+            util::buffer<Real> a_packed{ N * (N + 1) / 2 };
             auto gen = [&]() { return dist(engine); };
             std::generate(a_packed.begin(), a_packed.end(), gen);
-            compute::tptri(a_packed.data(), N);
+            compute::tptri(a_packed.get(), N);
         }
 
         template<typename Real>
@@ -275,10 +282,10 @@ namespace
         {
             tp::sampler smp(g_tpr);
             std::uniform_real_distribution<Real> dist{ 1.0, 2.0 };
-            std::vector<Real> a(N * N);
+            util::buffer<Real> a{ N * N };
             auto gen = [&]() { return dist(engine); };
             fill_upper_triangular(a.begin(), a.end(), N, gen);
-            compute::trtri(a.data(), N);
+            compute::trtri(a.get(), N);
         }
 
         template<typename Real>
@@ -286,97 +293,95 @@ namespace
         {
             tp::sampler smp(g_tpr);
             auto a = upper_dd_matrix<Real>(N, engine);
-            compute::potrf(a.data(), N);
+            compute::potrf(a.get(), N);
         }
     }
 
-    NO_INLINE void dgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void dgesv(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::gesv_impl<double>(N, Nrhs, engine);
+        detail::gesv_impl<double>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void sgesv(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void sgesv(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::gesv_impl<float>(N, Nrhs, engine);
+        detail::gesv_impl<float>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void dgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void dgetrs(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::getrs_impl<double>(N, Nrhs, engine);
+        detail::getrs_impl<double>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void sgetrs(std::size_t, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void sgetrs(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::getrs_impl<float>(N, Nrhs, engine);
+        detail::getrs_impl<float>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void dgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void dgels(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::gels_impl<double>(M, N, Nrhs, engine);
+        detail::gels_impl<double>(p.M, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void sgels(std::size_t M, std::size_t N, std::size_t Nrhs, std::mt19937_64& engine)
+    NO_INLINE void sgels(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::gels_impl<float>(M, N, Nrhs, engine);
+        detail::gels_impl<float>(p.M, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void dgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dgetri(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::getri_impl<double>(N, engine);
+        detail::getri_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void sgetri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void sgetri(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::getri_impl<float>(N, engine);
+        detail::getri_impl<float>(p.N, engine);
     }
 
-    NO_INLINE void dgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dgetrf(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::getrf_impl<double>(M, N, engine);
+        detail::getrf_impl<double>(p.M, p.N, engine);
     }
 
-    NO_INLINE void sgetrf(std::size_t M, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void sgetrf(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::getrf_impl<float>(M, N, engine);
+        detail::getrf_impl<float>(p.M, p.N, engine);
     }
 
-    NO_INLINE void dtptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dtptri(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::tptri_impl<double>(N, engine);
+        detail::tptri_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void stptri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void stptri(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::tptri_impl<float>(N, engine);
+        detail::tptri_impl<float>(p.N, engine);
     }
 
-    NO_INLINE void dtrtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dtrtri(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::trtri_impl<double>(N, engine);
+        detail::trtri_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void strtri(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void strtri(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::trtri_impl<float>(N, engine);
+        detail::trtri_impl<float>(p.N, engine);
     }
 
-    NO_INLINE void dpotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void dpotrf(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::potrf_impl<double>(N, engine);
+        detail::potrf_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void spotrf(std::size_t, std::size_t N, std::size_t, std::mt19937_64& engine)
+    NO_INLINE void spotrf(const compute_params& p, std::mt19937_64& engine)
     {
-        detail::potrf_impl<float>(N, engine);
+        detail::potrf_impl<float>(p.N, engine);
     }
 
     class cmdparams
     {
         using work_func = decltype(&dgesv);
-        std::size_t m = 0;
-        std::size_t n = 0;
-        std::size_t nrhs = 0;
         work_func func = nullptr;
+        compute_params params = {};
 
     public:
         cmdparams(int argc, const char* const* argv)
@@ -397,54 +402,44 @@ namespace
             if (func == dgels || func == sgels)
             {
                 if (argc < 5)
-                {
-                    print_usage(argv[0]);
-                    throw std::invalid_argument(op_type.append(": Too few arguments"));
-                }
-                util::to_scalar(argv[2], m);
-                util::to_scalar(argv[3], n);
-                util::to_scalar(argv[4], nrhs);
+                    too_few(argv[0], std::move(op_type));
+                util::to_scalar(argv[2], params.M);
+                assert_positive(params.M, "m");
+                util::to_scalar(argv[3], params.N);
+                assert_positive(params.N, "n");
+                util::to_scalar(argv[4], params.Nrhs);
+                assert_positive(params.Nrhs, "nrhs");
             }
             else if (func == dgesv || func == sgesv || func == dgetrs || func == sgetrs)
             {
                 if (argc < 4)
-                {
-                    print_usage(argv[0]);
-                    throw std::invalid_argument(op_type.append(": Too few arguments"));
-                }
-                util::to_scalar(argv[2], n);
-                util::to_scalar(argv[3], nrhs);
+                    too_few(argv[0], std::move(op_type));
+                util::to_scalar(argv[2], params.N);
+                assert_positive(params.N, "n");
+                util::to_scalar(argv[3], params.Nrhs);
+                assert_positive(params.Nrhs, "nrhs");
             }
             else if (single_arg(func))
             {
                 if (argc < 3)
-                {
-                    print_usage(argv[0]);
-                    throw std::invalid_argument(op_type.append(": Too few arguments"));
-                }
-                util::to_scalar(argv[2], n);
+                    too_few(argv[0], std::move(op_type));
+                util::to_scalar(argv[2], params.N);
+                assert_positive(params.N, "n");
             }
             else if (func == dgetrf || func == sgetrf)
             {
                 if (argc < 4)
-                {
-                    print_usage(argv[0]);
-                    throw std::invalid_argument(op_type.append(": Too few arguments"));
-                }
-                util::to_scalar(argv[2], m);
-                util::to_scalar(argv[3], n);
+                    too_few(argv[0], std::move(op_type));
+                util::to_scalar(argv[2], params.M);
+                assert_positive(params.M, "m");
+                util::to_scalar(argv[3], params.N);
+                assert_positive(params.N, "n");
             }
-            else
-            {
-                print_usage(argv[0]);
-                throw std::invalid_argument(std::string("invalid work type: ").append(op_type));
-            }
-            assert(func);
         }
 
         void do_work(std::mt19937_64& engine) const
         {
-            func(m, n, nrhs, engine);
+            func(params, engine);
         }
 
     private:
@@ -458,6 +453,13 @@ namespace
         bool single_arg(work_func func)
         {
             return is_inversion(func) || func == dpotrf || func == spotrf;
+        }
+
+        void assert_positive(std::size_t x, std::string name)
+        {
+            assert(x);
+            if (!x)
+                throw std::invalid_argument(std::move(name.append(" must be greater than 0")));
         }
 
         work_func get_work_func(const std::string& str)
@@ -494,7 +496,15 @@ namespace
                 return dpotrf;
             if (str == "spotrf")
                 return spotrf;
-            return nullptr;
+            throw std::invalid_argument(std::string("invalid work type: ")
+                .append(str));
+        }
+
+        void too_few(const char* prog, std::string op)
+        {
+            print_usage(prog);
+            throw std::invalid_argument(
+                std::move(op.append(": too few arguments")));
         }
 
         void print_usage(const char* prog)
