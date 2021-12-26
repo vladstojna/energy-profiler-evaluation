@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<config>
+
+    <sections>
+
+        <section target="cpu" label="dgesv">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::gesv<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="sgesv">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::gesv<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dgetrs">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::getrs<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="sgetrs">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::getrs<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dgels">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::gels<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="sgels">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::gels<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dgetri">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::getri<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="sgetri">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::getri<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dgetrf">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::getrf<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="sgetrf">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::getrf<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dtptri">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::tptri<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="stptri">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::tptri<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dtrtri">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::trtri<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="strtri">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::trtri<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="dpotrf">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::potrf<double>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+        <section target="cpu" label="spotrf">
+            <bounds>
+                <func name="void (anonymous namespace)::detail::compute::potrf<float>"/>
+            </bounds>
+            <allow_concurrency/>
+            <method>profile</method>
+            <interval>100</interval>
+        </section>
+
+    </sections>
+
+</config>
