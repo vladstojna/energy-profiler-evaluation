@@ -13,27 +13,22 @@
 #include <random>
 
 #define NO_INLINE __attribute__((noinline))
+#define NO_CLONE __attribute__((noclone))
 
 namespace
 {
     tp::printer g_tpr;
 
 #if defined(USE_ITERATIONS)
-    struct compute_params
-    {
-        std::size_t N = 0;
-        std::size_t M = 0;
-        std::size_t Nrhs = 0;
-        std::size_t iters = 0;
-    };
-#else
+    std::size_t g_iters = 0;
+#endif // defined(USE_ITERATIONS)
+
     struct compute_params
     {
         std::size_t N = 0;
         std::size_t M = 0;
         std::size_t Nrhs = 0;
     };
-#endif // USE_ITERATIONS
 
     namespace detail
     {
@@ -145,8 +140,7 @@ namespace
                 template<typename Caller, typename... Args>
                 void generic_solver(Args... args)
                 {
-                    int res = Caller::value(args...);
-                    handle_error(res);
+                    handle_error(Caller::value(args...));
                 }
 
                 template<typename Caller, typename... Args>
@@ -154,16 +148,173 @@ namespace
                 {
                     using Real = typename Caller::type;
                     auto workspace_query = Real{};
-                    int res = Caller::value(args..., &workspace_query, -1);
-                    handle_error(res);
+                    handle_error(Caller::value(args..., &workspace_query, -1));
                     util::buffer<Real> work{ static_cast<std::uint64_t>(workspace_query) };
-                    res = Caller::value(args..., work.get(), work.size());
-                    handle_error(res);
+                    handle_error(Caller::value(args..., work.get(), work.size()));
                 }
+
+            #if defined(USE_ITERATIONS)
+                template<typename Real>
+                void gesv(Real* a, Real* b, lapack_int* ipiv, size_t N, size_t Nrhs)
+                {
+                    util::buffer<Real> a2{ N * N };
+                    util::buffer<Real> b2{ N * Nrhs };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        std::ignore = std::copy(a, b + b2.size(), std::begin(b2));
+                        generic_solver<gesv_caller<Real>>(
+                            LAPACK_COL_MAJOR, N, Nrhs, a2.get(), N, ipiv, b2.get(), N);
+                    }
+                }
+
+                template<typename Real>
+                void gels(Real* a, Real* b, size_t M, size_t N, size_t Nrhs)
+                {
+                    util::buffer<Real> a2{ M * N };
+                    util::buffer<Real> b2{ std::max(N, M) * Nrhs };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        std::ignore = std::copy(a, b + b2.size(), std::begin(b2));
+                        query_solver<gels_caller<Real>>(
+                            LAPACK_COL_MAJOR, 'N', M, N, Nrhs, a2.get(), M,
+                            b2.get(), std::max(N, M));
+                    }
+                }
+
+                template<typename Real>
+                void getrf(Real* a, lapack_int* ipiv, size_t M, size_t N)
+                {
+                    util::buffer<Real> a2{ M * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        generic_solver<getrf_caller<Real>>(
+                            LAPACK_COL_MAJOR, M, N, a2.get(), M, ipiv);
+                    }
+                }
+
+                template<typename Real>
+                void getri(Real* a, const lapack_int* ipiv, size_t N)
+                {
+                    util::buffer<Real> a2{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        query_solver<getri_caller<Real>>(
+                            LAPACK_COL_MAJOR, N, a2.get(), N, ipiv);
+                    }
+                }
+
+                template<typename Real>
+                void getrs(const Real* a, Real* b, const lapack_int* ipiv, size_t N, size_t Nrhs)
+                {
+                    util::buffer<Real> b2{ N * Nrhs };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(b, b + b2.size(), std::begin(b2));
+                        generic_solver<getrs_caller<Real>>(
+                            LAPACK_COL_MAJOR, 'N', N, Nrhs, a, N, ipiv, b2.get(), N);
+                    }
+                }
+
+                template<typename Real>
+                void tptri(Real* a, size_t N)
+                {
+                    util::buffer<Real> a2{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        generic_solver<tptri_caller<Real>>(
+                            LAPACK_COL_MAJOR, 'L', 'N', N, a2.get());
+                    }
+                }
+
+                template<typename Real>
+                void trtri(Real* a, size_t N)
+                {
+                    util::buffer<Real> a2{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        generic_solver<trtri_caller<Real>>(
+                            LAPACK_COL_MAJOR, 'L', 'N', N, a2.get(), N);
+                    }
+                }
+
+                template<typename Real>
+                void potrf(Real* a, size_t N)
+                {
+                    util::buffer<Real> a2{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
+                        generic_solver<potrf_caller<Real>>(
+                            LAPACK_COL_MAJOR, 'L', N, a2.get(), N);
+                    }
+                }
+            #else // !defined(USE_ITERATIONS)
+                template<typename Real>
+                void gesv(Real* a, Real* b, lapack_int* ipiv, size_t N, size_t Nrhs)
+                {
+                    generic_solver<gesv_caller<Real>>(
+                        LAPACK_COL_MAJOR, N, Nrhs, a, N, ipiv, b, N);
+                }
+
+                template<typename Real>
+                void gels(Real* a, Real* b, size_t M, size_t N, size_t Nrhs)
+                {
+                    query_solver<gels_caller<Real>>(
+                        LAPACK_COL_MAJOR, 'N', M, N, Nrhs, a, M, b, std::max(N, M));
+                }
+
+                template<typename Real>
+                void getrf(Real* a, lapack_int* ipiv, size_t M, size_t N)
+                {
+                    generic_solver<getrf_caller<Real>>(
+                        LAPACK_COL_MAJOR, M, N, a, M, ipiv);
+                }
+
+                template<typename Real>
+                void getri(Real* a, const lapack_int* ipiv, size_t N)
+                {
+                    query_solver<getri_caller<Real>>(
+                        LAPACK_COL_MAJOR, N, a, N, ipiv);
+                }
+
+                template<typename Real>
+                void getrs(const Real* a, Real* b, const lapack_int* ipiv, size_t N, size_t Nrhs)
+                {
+                    generic_solver<getrs_caller<Real>>(
+                        LAPACK_COL_MAJOR, 'N', N, Nrhs, a, N, ipiv, b, N);
+                }
+
+                template<typename Real>
+                void tptri(Real* a, size_t N)
+                {
+                    generic_solver<tptri_caller<Real>>(
+                        LAPACK_COL_MAJOR, 'L', 'N', N, a);
+                }
+
+                template<typename Real>
+                void trtri(Real* a, size_t N)
+                {
+                    generic_solver<trtri_caller<Real>>(
+                        LAPACK_COL_MAJOR, 'L', 'N', N, a, N);
+                }
+
+                template<typename Real>
+                void potrf(Real* a, size_t N)
+                {
+                    generic_solver<potrf_caller<Real>>(
+                        LAPACK_COL_MAJOR, 'L', N, a, N);
+                }
+            #endif // defined(USE_ITERATIONS)
             }
 
             template<typename Real>
-            NO_INLINE void gesv(
+            NO_INLINE NO_CLONE void gesv(
                 Real* a,
                 Real* b,
                 lapack_int* ipiv,
@@ -171,12 +322,11 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                impl::generic_solver<gesv_caller<Real>>(
-                    LAPACK_COL_MAJOR, N, Nrhs, a, N, ipiv, b, N);
+                impl::gesv(a, b, ipiv, N, Nrhs);
             }
 
             template<typename Real>
-            NO_INLINE void gels(
+            NO_INLINE NO_CLONE void gels(
                 Real* a,
                 Real* b,
                 std::size_t M,
@@ -184,32 +334,30 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                impl::query_solver<gels_caller<Real>>(LAPACK_COL_MAJOR,
-                    'N', M, N, Nrhs, a, M, b, std::max(N, M));
+                impl::gels(a, b, M, N, Nrhs);
             }
 
             template<typename Real>
-            NO_INLINE void getrf(
+            NO_INLINE NO_CLONE void getrf(
                 Real* a,
                 lapack_int* ipiv,
                 std::size_t M,
                 std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                impl::generic_solver<getrf_caller<Real>>(
-                    LAPACK_COL_MAJOR, M, N, a, M, ipiv);
+                impl::getrf(a, ipiv, M, N);
             }
 
             template<typename Real>
-            NO_INLINE void getri(Real* a, const lapack_int* ipiv, std::size_t N)
+            NO_INLINE NO_CLONE void getri(
+                Real* a, const lapack_int* ipiv, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                impl::query_solver<getri_caller<Real>>(
-                    LAPACK_COL_MAJOR, N, a, N, ipiv);
+                impl::getri(a, ipiv, N);
             }
 
             template<typename Real>
-            NO_INLINE void getrs(
+            NO_INLINE NO_CLONE void getrs(
                 const Real* a,
                 Real* b,
                 const lapack_int* ipiv,
@@ -217,32 +365,28 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                impl::generic_solver<getrs_caller<Real>>(
-                    LAPACK_COL_MAJOR, 'N', N, Nrhs, a, N, ipiv, b, N);
+                impl::getrs(a, b, ipiv, N, Nrhs);
             }
 
             template<typename Real>
-            NO_INLINE void tptri(Real* a, std::size_t N)
+            NO_INLINE NO_CLONE void tptri(Real* a, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                impl::generic_solver<tptri_caller<Real>>(
-                    LAPACK_COL_MAJOR, 'L', 'N', N, a);
+                impl::tptri(a, N);
             }
 
             template<typename Real>
-            NO_INLINE void trtri(Real* a, std::size_t N)
+            NO_INLINE NO_CLONE void trtri(Real* a, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                impl::generic_solver<trtri_caller<Real>>(
-                    LAPACK_COL_MAJOR, 'L', 'N', N, a, N);
+                impl::trtri(a, N);
             }
 
             template<typename Real>
-            NO_INLINE void potrf(Real* a, std::size_t N)
+            NO_INLINE NO_CLONE void potrf(Real* a, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                impl::generic_solver<potrf_caller<Real>>(
-                    LAPACK_COL_MAJOR, 'L', N, a, N);
+                impl::potrf(a, N);
             }
         }
 
@@ -572,8 +716,8 @@ namespace
         void get_iterations(int argc, const char* const* argv, int idx)
         {
             if (argc > idx)
-                util::to_scalar(argv[idx], params.iters);
-            assert_positive(params.iters, "iters");
+                util::to_scalar(argv[idx], g_iters);
+            assert_positive(g_iters, "iters");
         }
     #else // !defined(USE_ITERATIONS)
         void print_usage(const char* prog)
