@@ -65,6 +65,7 @@ namespace
                 template<typename... Args>
                 int operator()(Args&&...) const { return 0; }
             };
+            using type = Real;
             static constexpr auto value = impl{};
         };
 
@@ -77,16 +78,21 @@ namespace
         DEFINE_ALIAS(trtri);
         DEFINE_ALIAS(potrf);
     #else // !defined(USE_ITERATIONS) || defined(DO_COMPUTATION)
-        template<auto Func>
-        struct func_obj : std::integral_constant<decltype(Func), Func> {};
-
     #define DEFINE_CALLER(prefix) \
         template<typename> \
         struct prefix ## _caller {}; \
         template<> \
-        struct prefix ## _caller<float> : func_obj<LAPACKE_s ## prefix ## _work> {}; \
+        struct prefix ## _caller<float> \
+        { \
+            static constexpr auto value = LAPACKE_s ## prefix ## _work; \
+            using type = float; \
+        }; \
         template<> \
-        struct prefix ## _caller<double> : func_obj<LAPACKE_d ## prefix ## _work> {}
+        struct prefix ## _caller<double> \
+        { \
+            static constexpr auto value = LAPACKE_d ## prefix ## _work; \
+            using type = double; \
+        }
 
         DEFINE_CALLER(gesv);
         DEFINE_CALLER(gels);
@@ -98,6 +104,8 @@ namespace
         DEFINE_CALLER(potrf);
     #endif // defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
 
+        // upper triangular in row-major is lower triangular in column-major,
+        // therefore pass 'L' to function which expects a column-major format
         template<typename It, typename Gen>
         void fill_upper_triangular(It from, It to, std::size_t ld, Gen gen)
         {
@@ -132,6 +140,28 @@ namespace
 
         namespace compute
         {
+            namespace impl
+            {
+                template<typename Caller, typename... Args>
+                void generic_solver(Args... args)
+                {
+                    int res = Caller::value(args...);
+                    handle_error(res);
+                }
+
+                template<typename Caller, typename... Args>
+                void query_solver(Args... args)
+                {
+                    using Real = typename Caller::type;
+                    auto workspace_query = Real{};
+                    int res = Caller::value(args..., &workspace_query, -1);
+                    handle_error(res);
+                    util::buffer<Real> work{ static_cast<std::uint64_t>(workspace_query) };
+                    res = Caller::value(args..., work.get(), work.size());
+                    handle_error(res);
+                }
+            }
+
             template<typename Real>
             NO_INLINE void gesv(
                 Real* a,
@@ -141,9 +171,8 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                int res = gesv_caller<Real>::value(
+                impl::generic_solver<gesv_caller<Real>>(
                     LAPACK_COL_MAJOR, N, Nrhs, a, N, ipiv, b, N);
-                handle_error(res);
             }
 
             template<typename Real>
@@ -155,15 +184,8 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                Real workspace_query = 0;
-                int res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
-                    'N', M, N, Nrhs, a, M, b, std::max(N, M), &workspace_query, -1);
-                handle_error(res);
-                smp.do_sample();
-                util::buffer<Real> work{ static_cast<std::uint64_t>(workspace_query) };
-                res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
-                    'N', M, N, Nrhs, a, M, b, std::max(N, M), work.get(), work.size());
-                handle_error(res);
+                impl::query_solver<gels_caller<Real>>(LAPACK_COL_MAJOR,
+                    'N', M, N, Nrhs, a, M, b, std::max(N, M));
             }
 
             template<typename Real>
@@ -174,24 +196,16 @@ namespace
                 std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                int res = getrf_caller<Real>::value(
+                impl::generic_solver<getrf_caller<Real>>(
                     LAPACK_COL_MAJOR, M, N, a, M, ipiv);
-                handle_error(res);
             }
 
             template<typename Real>
             NO_INLINE void getri(Real* a, const lapack_int* ipiv, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                Real workspace_query = 0;
-                int res = getri_caller<Real>::value(LAPACK_COL_MAJOR,
-                    N, a, N, ipiv, &workspace_query, -1);
-                handle_error(res);
-                smp.do_sample();
-                util::buffer<Real> work{ static_cast<std::uint64_t>(workspace_query) };
-                res = getri_caller<Real>::value(
-                    LAPACK_COL_MAJOR, N, a, N, ipiv, work.get(), work.size());
-                handle_error(res);
+                impl::query_solver<getri_caller<Real>>(
+                    LAPACK_COL_MAJOR, N, a, N, ipiv);
             }
 
             template<typename Real>
@@ -203,40 +217,32 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                int res = getrs_caller<Real>::value(
+                impl::generic_solver<getrs_caller<Real>>(
                     LAPACK_COL_MAJOR, 'N', N, Nrhs, a, N, ipiv, b, N);
-                handle_error(res);
             }
 
             template<typename Real>
             NO_INLINE void tptri(Real* a, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                int res = tptri_caller<Real>::value(
+                impl::generic_solver<tptri_caller<Real>>(
                     LAPACK_COL_MAJOR, 'L', 'N', N, a);
-                handle_error(res);
             }
 
             template<typename Real>
             NO_INLINE void trtri(Real* a, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                // upper triangular in row-major is lower triangular in column-major,
-                // therefore pass 'L' to function which expects a column-major format
-                int res = trtri_caller<Real>::value(
+                impl::generic_solver<trtri_caller<Real>>(
                     LAPACK_COL_MAJOR, 'L', 'N', N, a, N);
-                handle_error(res);
             }
 
             template<typename Real>
             NO_INLINE void potrf(Real* a, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                // upper triangular in row-major is lower triangular in column-major,
-                // therefore pass 'L' to function which expects a column-major format
-                int res = potrf_caller<Real>::value(
+                impl::generic_solver<potrf_caller<Real>>(
                     LAPACK_COL_MAJOR, 'L', N, a, N);
-                handle_error(res);
             }
         }
 
