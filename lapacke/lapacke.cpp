@@ -18,12 +18,22 @@ namespace
 {
     tp::printer g_tpr;
 
+#if defined(USE_ITERATIONS)
+    struct compute_params
+    {
+        std::size_t N = 0;
+        std::size_t M = 0;
+        std::size_t Nrhs = 0;
+        std::size_t iters = 0;
+    };
+#else
     struct compute_params
     {
         std::size_t N = 0;
         std::size_t M = 0;
         std::size_t Nrhs = 0;
     };
+#endif // USE_ITERATIONS
 
     namespace detail
     {
@@ -297,82 +307,82 @@ namespace
         }
     }
 
-    NO_INLINE void dgesv(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dgesv(compute_params p, std::mt19937_64& engine)
     {
         detail::gesv_impl<double>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void sgesv(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void sgesv(compute_params p, std::mt19937_64& engine)
     {
         detail::gesv_impl<float>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void dgetrs(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dgetrs(compute_params p, std::mt19937_64& engine)
     {
         detail::getrs_impl<double>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void sgetrs(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void sgetrs(compute_params p, std::mt19937_64& engine)
     {
         detail::getrs_impl<float>(p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void dgels(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dgels(compute_params p, std::mt19937_64& engine)
     {
         detail::gels_impl<double>(p.M, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void sgels(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void sgels(compute_params p, std::mt19937_64& engine)
     {
         detail::gels_impl<float>(p.M, p.N, p.Nrhs, engine);
     }
 
-    NO_INLINE void dgetri(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dgetri(compute_params p, std::mt19937_64& engine)
     {
         detail::getri_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void sgetri(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void sgetri(compute_params p, std::mt19937_64& engine)
     {
         detail::getri_impl<float>(p.N, engine);
     }
 
-    NO_INLINE void dgetrf(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dgetrf(compute_params p, std::mt19937_64& engine)
     {
         detail::getrf_impl<double>(p.M, p.N, engine);
     }
 
-    NO_INLINE void sgetrf(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void sgetrf(compute_params p, std::mt19937_64& engine)
     {
         detail::getrf_impl<float>(p.M, p.N, engine);
     }
 
-    NO_INLINE void dtptri(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dtptri(compute_params p, std::mt19937_64& engine)
     {
         detail::tptri_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void stptri(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void stptri(compute_params p, std::mt19937_64& engine)
     {
         detail::tptri_impl<float>(p.N, engine);
     }
 
-    NO_INLINE void dtrtri(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dtrtri(compute_params p, std::mt19937_64& engine)
     {
         detail::trtri_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void strtri(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void strtri(compute_params p, std::mt19937_64& engine)
     {
         detail::trtri_impl<float>(p.N, engine);
     }
 
-    NO_INLINE void dpotrf(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void dpotrf(compute_params p, std::mt19937_64& engine)
     {
         detail::potrf_impl<double>(p.N, engine);
     }
 
-    NO_INLINE void spotrf(const compute_params& p, std::mt19937_64& engine)
+    NO_INLINE void spotrf(compute_params p, std::mt19937_64& engine)
     {
         detail::potrf_impl<float>(p.N, engine);
     }
@@ -409,6 +419,7 @@ namespace
                 assert_positive(params.N, "n");
                 util::to_scalar(argv[4], params.Nrhs);
                 assert_positive(params.Nrhs, "nrhs");
+                get_iterations(argc, argv, 5);
             }
             else if (func == dgesv || func == sgesv || func == dgetrs || func == sgetrs)
             {
@@ -418,6 +429,7 @@ namespace
                 assert_positive(params.N, "n");
                 util::to_scalar(argv[3], params.Nrhs);
                 assert_positive(params.Nrhs, "nrhs");
+                get_iterations(argc, argv, 4);
             }
             else if (single_arg(func))
             {
@@ -425,6 +437,7 @@ namespace
                     too_few(argv[0], std::move(op_type));
                 util::to_scalar(argv[2], params.N);
                 assert_positive(params.N, "n");
+                get_iterations(argc, argv, 3);
             }
             else if (func == dgetrf || func == sgetrf)
             {
@@ -434,6 +447,7 @@ namespace
                 assert_positive(params.M, "m");
                 util::to_scalar(argv[3], params.N);
                 assert_positive(params.N, "n");
+                get_iterations(argc, argv, 4);
             }
         }
 
@@ -507,6 +521,25 @@ namespace
                 std::move(op.append(": too few arguments")));
         }
 
+    #if defined(USE_ITERATIONS)
+        void print_usage(const char* prog)
+        {
+            std::cerr << "Usage:\n"
+                << "\t" << prog << " {dgesv,sgesv,dgetrs,sgetrs} <n> <nrhs> <iters>\n"
+                << "\t" << prog << " {dgels,sgels} <m> <n> <nrhs> <iters>\n"
+                << "\t" << prog << " {dgetri,sgetri} <n> <iters>\n"
+                << "\t" << prog << " {dtptri,stptri,dtrtri,strtri} <n> <iters>\n"
+                << "\t" << prog << " {dpotrf,spotrf} <n> <iters>\n"
+                << "\t" << prog << " {dgetrf,sgetrf} <m> <n> <iters>\n";
+        }
+
+        void get_iterations(int argc, const char* const* argv, int idx)
+        {
+            if (argc > idx)
+                util::to_scalar(argv[idx], params.iters);
+            assert_positive(params.iters, "iters");
+        }
+    #else // !defined(USE_ITERATIONS)
         void print_usage(const char* prog)
         {
             std::cerr << "Usage:\n"
@@ -517,6 +550,9 @@ namespace
                 << "\t" << prog << " {dpotrf,spotrf} <n>\n"
                 << "\t" << prog << " {dgetrf,sgetrf} <m> <n>\n";
         }
+
+        void get_iterations(int, const char* const*, int) {}
+    #endif // defined(USE_ITERATIONS)
     };
 }
 
