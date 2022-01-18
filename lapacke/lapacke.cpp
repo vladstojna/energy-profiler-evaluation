@@ -37,6 +37,9 @@ namespace
 
     namespace detail
     {
+    #if defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
+        void handle_error(int) {}
+    #else // !defined(USE_ITERATIONS) || defined(DO_COMPUTATION)
         void handle_error(int res)
         {
             if (res > 0)
@@ -47,7 +50,33 @@ namespace
                 throw std::runtime_error(std::string("Error during computation; info=").append(
                     std::to_string(res)));
         }
+    #endif // defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
 
+    #if defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
+    #define DEFINE_ALIAS(prefix) \
+        template<typename Real> \
+        using prefix ## _caller = any_caller<Real>
+
+        template<typename Real>
+        struct any_caller
+        {
+            struct impl
+            {
+                template<typename... Args>
+                int operator()(Args&&...) const { return 0; }
+            };
+            static constexpr auto value = impl{};
+        };
+
+        DEFINE_ALIAS(gesv);
+        DEFINE_ALIAS(gels);
+        DEFINE_ALIAS(getri);
+        DEFINE_ALIAS(getrf);
+        DEFINE_ALIAS(getrs);
+        DEFINE_ALIAS(tptri);
+        DEFINE_ALIAS(trtri);
+        DEFINE_ALIAS(potrf);
+    #else // !defined(USE_ITERATIONS) || defined(DO_COMPUTATION)
         template<auto Func>
         struct func_obj : std::integral_constant<decltype(Func), Func> {};
 
@@ -67,6 +96,7 @@ namespace
         DEFINE_CALLER(tptri);
         DEFINE_CALLER(trtri);
         DEFINE_CALLER(potrf);
+    #endif // defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
 
         template<typename It, typename Gen>
         void fill_upper_triangular(It from, It to, std::size_t ld, Gen gen)
@@ -125,7 +155,7 @@ namespace
                 std::size_t Nrhs)
             {
                 tp::sampler smp(g_tpr);
-                Real workspace_query;
+                Real workspace_query = 0;
                 int res = gels_caller<Real>::value(LAPACK_COL_MAJOR,
                     'N', M, N, Nrhs, a, M, b, std::max(N, M), &workspace_query, -1);
                 handle_error(res);
@@ -153,7 +183,7 @@ namespace
             NO_INLINE void getri(Real* a, const lapack_int* ipiv, std::size_t N)
             {
                 tp::sampler smp(g_tpr);
-                Real workspace_query;
+                Real workspace_query = 0;
                 int res = getri_caller<Real>::value(LAPACK_COL_MAJOR,
                     N, a, N, ipiv, &workspace_query, -1);
                 handle_error(res);
