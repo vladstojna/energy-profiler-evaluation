@@ -13,7 +13,12 @@
 #include <random>
 
 #define NO_INLINE __attribute__((noinline))
+
+#if defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
+#define NO_CLONE __attribute__((noclone,no_icf))
+#else // !defined(USE_ITERATIONS) || defined(DO_COMPUTATION)
 #define NO_CLONE __attribute__((noclone))
+#endif // defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
 
 namespace
 {
