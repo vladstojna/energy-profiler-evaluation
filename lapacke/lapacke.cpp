@@ -63,7 +63,7 @@ namespace
             struct impl
             {
                 template<typename... Args>
-                int operator()(Args&&...) const { return 0; }
+                constexpr int operator()(Args&&...) const { return 0; }
             };
             using type = Real;
             static constexpr auto value = impl{};
