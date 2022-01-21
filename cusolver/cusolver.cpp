@@ -322,17 +322,263 @@ namespace
                 }
 
                 template<typename Caller, typename... Args>
-                void compute(cusolverdn_handle& h, Args... args)
+                void compute(cusolverdn_handle& h,
+                    util::device_buffer<cusolver_int_t>& dev_info,
+                    Args... args)
                 {
-                    cusolver_int_t info = 0;
-                    util::device_buffer dev_info{ &info, &info + 1 };
+                    util::zero(dev_info);
                     auto status = Caller::compute(h, args..., dev_info.get());
                     if (status != CUSOLVER_STATUS_SUCCESS)
                         cusolver_error(Caller::compute_str, status);
+                    cusolver_int_t info;
                     util::copy(dev_info, 1, &info);
                     handle_error(info);
                 }
 
+            #if defined(USE_ITERATIONS)
+            #if CUDART_VERSION < 11040
+                template<typename Real>
+                void trtri(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+                    int lwork = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<trtri_call<Real>>(handle, uplo, diag, N, a_copy.get(), N, &lwork);
+                        util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+                        compute<trtri_call<Real>>(handle, dev_info,
+                            uplo, diag, N, a_copy.get(), N, dev_work.get(), lwork);
+                    }
+                }
+            #else // CUDART_VERSION >= 11040
+                template<typename Real>
+                void trtri(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+                    std::size_t workspace_device = 0;
+                    std::size_t workspace_host = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<trtri_call<Real>>(handle,
+                            uplo, diag, N, cuda_data_type<Real>::value, a_copy.get(), N,
+                            &workspace_device, &workspace_host);
+                        auto [dev_work, host_work] =
+                            work_buffers<std::uint8_t>(workspace_device, workspace_host);
+                        compute<trtri_call<Real>>(handle, dev_info,
+                            uplo, diag, N, cuda_data_type<Real>::value, a_copy.get(), N,
+                            dev_work.get(), workspace_device,
+                            host_work.get(), workspace_host);
+                    }
+                }
+            #endif // CUDART_VERSION < 11040
+
+            #if CUDART_VERSION < 11010
+                template<typename Real>
+                void getrf(cusolverdn_handle& handle,
+                    std::size_t M, std::size_t N,
+                    Real* a, index_type* ipiv)
+                {
+                    int lwork = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ M * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<getrf_call<Real>>(handle, M, N, a_copy.get(), M, &lwork);
+                        util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+                        compute<getrf_call<Real>>(handle, dev_info,
+                            M, N, a_copy.get(), M, dev_work.get(), ipiv);
+                    }
+                }
+            #else // CUDART_VERSION >= 11010
+                template<typename Real>
+                void getrf(cusolverdn_handle& handle,
+                    std::size_t M, std::size_t N,
+                    Real* a, index_type* ipiv)
+                {
+                    std::size_t workspace_device = 0;
+                    std::size_t workspace_host = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ M * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<getrf_call<Real>>(handle,
+                            nullptr, M, N, cuda_data_type<Real>::value,
+                            a_copy.get(), M, cuda_data_type<Real>::value,
+                            &workspace_device, &workspace_host);
+                        auto [dev_work, host_work] =
+                            work_buffers<std::uint8_t>(workspace_device, workspace_host);
+                        compute<getrf_call<Real>>(handle, dev_info,
+                            nullptr, M, N, cuda_data_type<Real>::value,
+                            a_copy.get(), M, ipiv, cuda_data_type<Real>::value,
+                            dev_work.get(), workspace_device,
+                            host_work.get(), workspace_host);
+                    }
+                }
+            #endif // CUDART_VERSION < 11010
+
+            #if CUDART_VERSION < 11010
+                template<typename Real>
+                void getrs(
+                    cusolverdn_handle& handle,
+                    std::size_t N,
+                    std::size_t Nrhs,
+                    const Real* a,
+                    const index_type* ipiv,
+                    Real* b)
+                {
+                    constexpr cublasOperation_t op = CUBLAS_OP_N;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> b_copy{ N * Nrhs };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ b, b_copy.size() }, b_copy);
+                        compute<getrs_call<Real>>(handle, dev_info,
+                            op, N, Nrhs, a, N, ipiv, b_copy.get(), N);
+                    }
+                }
+            #else // CUDART_VERSION >= 11010
+                template<typename Real>
+                void getrs(cusolverdn_handle& handle,
+                    std::size_t N, std::size_t Nrhs,
+                    const Real* a, const index_type* ipiv, Real* b)
+                {
+                    constexpr cublasOperation_t op = CUBLAS_OP_N;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> b_copy{ N * Nrhs };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ b, b_copy.size() }, b_copy);
+                        compute<getrs_call<Real>>(handle, dev_info,
+                            nullptr, op, N, Nrhs, cuda_data_type<Real>::value,
+                            a, N, ipiv, cuda_data_type<Real>::value, b_copy.get(), N);
+                    }
+                }
+            #endif // CUDART_VERSION < 11010
+
+            #if CUDART_VERSION < 11000
+                // cusolverDn<t>potrf()
+                template<typename Real>
+                void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    int lwork = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<potrf_call<Real>>(handle, uplo, N, a_copy.get(), N, &lwork);
+                        util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+                        compute<potrf_call<Real>>(handle, dev_info,
+                            uplo, N, a_copy.get(), N, dev_work.get(), lwork);
+                    }
+                }
+            #elif CUDART_VERSION >= 11010
+                template<typename Real>
+                void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    std::size_t workspace_device = 0;
+                    std::size_t workspace_host = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<potrf_call<Real>>(handle,
+                            nullptr, uplo, N, cuda_data_type<Real>::value,
+                            a_copy.get(), N, cuda_data_type<Real>::value,
+                            &workspace_device, &workspace_host);
+                        auto [dev_work, host_work] =
+                            work_buffers<std::uint8_t>(workspace_device, workspace_host);
+                        compute<potrf_call<Real>>(handle, dev_info,
+                            nullptr, uplo, N, cuda_data_type<Real>::value,
+                            a_copy.get(), N, cuda_data_type<Real>::value,
+                            dev_work.get(), workspace_device,
+                            host_work.get(), workspace_host);
+                    }
+                }
+            #else // CUDART_VERSION >= 11000
+                // cusolverDnPotrf()
+                template<typename Real>
+                void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    std::size_t workspace = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<potrf_call<Real>>(handle,
+                            nullptr, uplo, N, cuda_data_type<Real>::value,
+                            a_copy.get(), N, cuda_data_type<Real>::value,
+                            &workspace);
+                        util::device_buffer<std::uint8_t> dev_work{ workspace };
+                        compute<potrf_call<Real>>(handle, dev_info,
+                            nullptr, uplo, N, cuda_data_type<Real>::value,
+                            a_copy.get(), N, cuda_data_type<Real>::value,
+                            dev_work.get(), workspace);
+                    }
+                }
+            #endif // CUDART_VERSION < 11000
+
+                template<typename Real>
+                void gesv(cusolverdn_handle& handle,
+                    std::size_t N, std::size_t Nrhs,
+                    Real* a, Real* b, Real* x, cusolver_int_t* ipiv)
+                {
+                    std::size_t work_bytes = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<gesv_call<Real>>(handle,
+                            N, Nrhs, nullptr, N, nullptr,
+                            nullptr, N, nullptr, N, nullptr,
+                            &work_bytes);
+                        cusolver_int_t iters = 0;
+                        util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+                        compute<gesv_call<Real>>(handle, dev_info,
+                            N, Nrhs, a_copy.get(), N, ipiv, b, N, x, N,
+                            dev_work.get(), work_bytes, &iters);
+                    }
+                }
+
+                template<typename Real>
+                void gels(cusolverdn_handle& handle,
+                    std::size_t M, std::size_t N, std::size_t Nrhs,
+                    Real* a, Real* b, Real* x)
+                {
+                    std::size_t work_bytes = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    util::device_buffer<Real> a_copy{ N * N };
+                    for (size_t i = 0; i < g_iters; i++)
+                    {
+                        util::copy(util::device_buffer_view{ a, a_copy.size() }, a_copy);
+                        query<gels_call<Real>>(handle,
+                            M, N, Nrhs,
+                            nullptr, M, nullptr, M, nullptr, N, nullptr,
+                            &work_bytes);
+                        cusolver_int_t iters = 0;
+                        util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+                        compute<gels_call<Real>>(handle, dev_info,
+                            M, N, Nrhs, a_copy.get(), M, b, M, x, N,
+                            dev_work.get(), work_bytes, &iters);
+                    }
+                }
+            #else // !defined(USE_ITERATIONS)
             #if CUDART_VERSION < 11040
                 template<typename Real>
                 void trtri(cusolverdn_handle& handle, std::size_t N, Real* a)
@@ -341,8 +587,9 @@ namespace
                     constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
                     int lwork = 0;
                     query<trtri_call<Real>>(handle, uplo, diag, N, a, N, &lwork);
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
                     util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-                    compute<trtri_call<Real>>(handle,
+                    compute<trtri_call<Real>>(handle, dev_info,
                         uplo, diag, N, a, N, dev_work.get(), lwork);
                 }
             #else // CUDART_VERSION >= 11040
@@ -358,7 +605,8 @@ namespace
                         &workspace_device, &workspace_host);
                     auto [dev_work, host_work] =
                         work_buffers<std::uint8_t>(workspace_device, workspace_host);
-                    compute<trtri_call<Real>>(handle,
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    compute<trtri_call<Real>>(handle, dev_info,
                         uplo, diag, N, cuda_data_type<Real>::value, a, N,
                         dev_work.get(), workspace_device,
                         host_work.get(), workspace_host);
@@ -373,9 +621,10 @@ namespace
                 {
                     int lwork = 0;
                     query<getrf_call<Real>>(handle, M, N, a, M, &lwork);
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
                     util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-                    compute<getrf_call<Real>>(
-                        handle, M, N, a, M, dev_work.get(), ipiv);
+                    compute<getrf_call<Real>>(handle, dev_info,
+                        M, N, a, M, dev_work.get(), ipiv);
                 }
             #else // CUDART_VERSION >= 11010
                 template<typename Real>
@@ -391,7 +640,8 @@ namespace
                         &workspace_device, &workspace_host);
                     auto [dev_work, host_work] =
                         work_buffers<std::uint8_t>(workspace_device, workspace_host);
-                    compute<getrf_call<Real>>(handle,
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    compute<getrf_call<Real>>(handle, dev_info,
                         nullptr, M, N, cuda_data_type<Real>::value,
                         a, M, ipiv, cuda_data_type<Real>::value,
                         dev_work.get(), workspace_device,
@@ -410,7 +660,8 @@ namespace
                     Real* b)
                 {
                     constexpr cublasOperation_t op = CUBLAS_OP_N;
-                    compute<getrs_call<Real>>(handle,
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    compute<getrs_call<Real>>(handle, dev_info,
                         op, N, Nrhs, a, N, ipiv, b, N);
                 }
             #else // CUDART_VERSION >= 11010
@@ -420,7 +671,8 @@ namespace
                     const Real* a, const index_type* ipiv, Real* b)
                 {
                     constexpr cublasOperation_t op = CUBLAS_OP_N;
-                    compute<getrs_call<Real>>(handle,
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    compute<getrs_call<Real>>(handle, dev_info,
                         nullptr, op, N, Nrhs, cuda_data_type<Real>::value,
                         a, N, ipiv, cuda_data_type<Real>::value, b, N);
                 }
@@ -434,8 +686,9 @@ namespace
                     constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
                     int lwork = 0;
                     query<potrf_call<Real>>(handle, uplo, N, a, N, &lwork);
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
                     util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-                    compute<potrf_call<Real>>(handle,
+                    compute<potrf_call<Real>>(handle, dev_info,
                         uplo, N, a, N, dev_work.get(), lwork);
                 }
             #elif CUDART_VERSION >= 11010
@@ -451,7 +704,8 @@ namespace
                         &workspace_device, &workspace_host);
                     auto [dev_work, host_work] =
                         work_buffers<std::uint8_t>(workspace_device, workspace_host);
-                    compute<potrf_call<Real>>(handle,
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
+                    compute<potrf_call<Real>>(handle, dev_info,
                         nullptr, uplo, N, cuda_data_type<Real>::value,
                         a, N, cuda_data_type<Real>::value,
                         dev_work.get(), workspace_device,
@@ -468,8 +722,9 @@ namespace
                         nullptr, uplo, N, cuda_data_type<Real>::value,
                         a, N, cuda_data_type<Real>::value,
                         &workspace);
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
                     util::device_buffer<std::uint8_t> dev_work{ workspace };
-                    compute<potrf_call<Real>>(handle,
+                    compute<potrf_call<Real>>(handle, dev_info,
                         nullptr, uplo, N, cuda_data_type<Real>::value,
                         a, N, cuda_data_type<Real>::value,
                         dev_work.get(), workspace);
@@ -487,8 +742,9 @@ namespace
                         nullptr, N, nullptr, N, nullptr,
                         &work_bytes);
                     cusolver_int_t iters = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
                     util::device_buffer<std::uint8_t> dev_work{ work_bytes };
-                    compute<gesv_call<Real>>(handle,
+                    compute<gesv_call<Real>>(handle, dev_info,
                         N, Nrhs, a, N, ipiv, b, N, x, N,
                         dev_work.get(), work_bytes, &iters);
                     std::cerr << "iterations = " << iters << "\n";
@@ -505,12 +761,14 @@ namespace
                         nullptr, M, nullptr, M, nullptr, N, nullptr,
                         &work_bytes);
                     cusolver_int_t iters = 0;
+                    util::device_buffer<cusolver_int_t> dev_info{ 1 };
                     util::device_buffer<std::uint8_t> dev_work{ work_bytes };
-                    compute<gels_call<Real>>(handle,
+                    compute<gels_call<Real>>(handle, dev_info,
                         M, N, Nrhs, a, M, b, M, x, N,
                         dev_work.get(), work_bytes, &iters);
                     std::cerr << "iterations = " << iters << "\n";
                 }
+            #endif // defined(USE_ITERATIONS)
             }
 
             template<typename Real>
