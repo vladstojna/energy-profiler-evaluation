@@ -7,6 +7,17 @@ deps    := $(patsubst %.cpp, %.d, $(src))
 incls := ../timeprinter/include ../include
 libs  := ../timeprinter/lib
 
+cpp :=
+USE_ITERATIONS ?=
+DO_COMPUTATION ?=
+
+ifneq (,$(USE_ITERATIONS))
+cpp += USE_ITERATIONS
+endif # (,$(USE_ITERATIONS))
+ifneq (,$(DO_COMPUTATION))
+cpp += DO_COMPUTATION
+endif # (,$(DO_COMPUTATION))
+
 CUDA_ROOT ?= /opt/cuda
 incls += $(CUDA_ROOT)/include
 libs += $(CUDA_ROOT)/lib$(shell getconf LONG_BIT)
