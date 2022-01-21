@@ -134,9 +134,9 @@ namespace
     #else // !defined(USE_ITERATIONS)
     #define DEFINE_CALL_MEMBERS(prefix, prec) \
         static constexpr auto query = cusolverDn ## prec ## prefix ## _bufferSize; \
-        static constexpr const char query_str[] = "cusolverDn" #prec #prefix "_bufferSize"; \
+        static constexpr char query_str[] = "cusolverDn" #prec #prefix "_bufferSize"; \
         static constexpr auto compute = cusolverDn ## prec ## prefix; \
-        static constexpr const char compute_str[] = "cusolverDn" #prec #prefix
+        static constexpr char compute_str[] = "cusolverDn" #prec #prefix
 
     #define DEFINE_CALL_ANY(prefix, prec_single, prec_double) \
         template<typename> \
@@ -184,13 +184,13 @@ namespace
         struct getrs_call<float>
         {
             static constexpr auto compute = cusolverDnSgetrs;
-            static constexpr const char compute_str[] = "cusolverDnSgetrs";
+            static constexpr char compute_str[] = "cusolverDnSgetrs";
         };
         template<>
         struct getrs_call<double>
         {
             static constexpr auto compute = cusolverDnDgetrs;
-            static constexpr const char compute_str[] = "cusolverDnDgetrs";
+            static constexpr char compute_str[] = "cusolverDnDgetrs";
         };
     #else // CUDART_VERSION >= 11010
         template<typename T>
