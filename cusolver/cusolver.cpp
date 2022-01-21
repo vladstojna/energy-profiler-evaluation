@@ -102,11 +102,6 @@ namespace
         }
     #endif // defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
 
-    #if defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
-    #define DEFINE_ALIAS(prefix) \
-        template<typename Real> \
-        using prefix ## _call = any_call<Real>
-
         template<typename Real>
         struct any_call
         {
@@ -125,12 +120,13 @@ namespace
             static constexpr auto compute_str = "";
         };
 
-        DEFINE_ALIAS(gesv);
-        DEFINE_ALIAS(gels);
-        DEFINE_ALIAS(getrf);
-        DEFINE_ALIAS(getrs);
-        DEFINE_ALIAS(trtri);
-        DEFINE_ALIAS(potrf);
+    #if defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
+        template<typename Real> using gesv_call = any_call<Real>;
+        template<typename Real> using gels_call = any_call<Real>;
+        template<typename Real> using getrf_call = any_call<Real>;
+        template<typename Real> using getrs_call = any_call<Real>;
+        template<typename Real> using trtri_call = any_call<Real>;
+        template<typename Real> using potrf_call = any_call<Real>;
     #else // !defined(USE_ITERATIONS)
     #define DEFINE_CALL_MEMBERS(prefix, prec) \
         static constexpr auto query = cusolverDn ## prec ## prefix ## _bufferSize; \
@@ -157,10 +153,14 @@ namespace
 
     #if CUDART_VERSION >= 10020
         DEFINE_CALL_IRS(gesv);
+    #else // CUDART_VERSION < 10020
+        template<typename Real> using gesv_call = any_call<Real>;
     #endif // CUDART_VERSION >= 10020
 
     #if CUDART_VERSION >= 11000
         DEFINE_CALL_IRS(gels);
+    #else // CUDART_VERSION < 11000
+        template<typename Real> using gels_call = any_call<Real>;
     #endif // CUDART_VERSION >= 11000
 
     #if CUDART_VERSION < 11040
@@ -300,77 +300,227 @@ namespace
 
         namespace compute
         {
-        #if CUDART_VERSION < 11040
+            namespace impl
+            {
+                template<typename T>
+                std::pair<util::device_buffer<T>, util::buffer<T>>
+                    work_buffers(std::size_t workspace_device, std::size_t workspace_host)
+                {
+                    return { util::device_buffer<std::uint8_t>{ workspace_device },
+                    workspace_host ?
+                        util::buffer<std::uint8_t>{ workspace_host } :
+                        util::buffer<std::uint8_t>{}
+                    };
+                }
+
+                template<typename Caller, typename... Args>
+                void query(cusolverdn_handle& h, Args... args)
+                {
+                    auto status = Caller::query(h, args...);
+                    if (status != CUSOLVER_STATUS_SUCCESS)
+                        cusolver_error(Caller::query_str, status);
+                }
+
+                template<typename Caller, typename... Args>
+                void compute(cusolverdn_handle& h, Args... args)
+                {
+                    cusolver_int_t info = 0;
+                    util::device_buffer dev_info{ &info, &info + 1 };
+                    auto status = Caller::compute(h, args..., dev_info.get());
+                    if (status != CUSOLVER_STATUS_SUCCESS)
+                        cusolver_error(Caller::compute_str, status);
+                    util::copy(dev_info, 1, &info);
+                    handle_error(info);
+                }
+
+            #if CUDART_VERSION < 11040
+                template<typename Real>
+                void trtri(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+                    int lwork = 0;
+                    query<trtri_call<Real>>(handle, uplo, diag, N, a, N, &lwork);
+                    util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+                    compute<trtri_call<Real>>(handle,
+                        uplo, diag, N, a, N, dev_work.get(), lwork);
+                }
+            #else // CUDART_VERSION >= 11040
+                template<typename Real>
+                void trtri(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
+                    std::size_t workspace_device = 0;
+                    std::size_t workspace_host = 0;
+                    query<trtri_call<Real>>(handle,
+                        uplo, diag, N, cuda_data_type<Real>::value, a, N,
+                        &workspace_device, &workspace_host);
+                    auto [dev_work, host_work] =
+                        work_buffers<std::uint8_t>(workspace_device, workspace_host);
+                    compute<trtri_call<Real>>(handle,
+                        uplo, diag, N, cuda_data_type<Real>::value, a, N,
+                        dev_work.get(), workspace_device,
+                        host_work.get(), workspace_host);
+                }
+            #endif // CUDART_VERSION < 11040
+
+            #if CUDART_VERSION < 11010
+                template<typename Real>
+                void getrf(cusolverdn_handle& handle,
+                    std::size_t M, std::size_t N,
+                    Real* a, index_type* ipiv)
+                {
+                    int lwork = 0;
+                    query<getrf_call<Real>>(handle, M, N, a, M, &lwork);
+                    util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+                    compute<getrf_call<Real>>(
+                        handle, M, N, a, M, dev_work.get(), ipiv);
+                }
+            #else // CUDART_VERSION >= 11010
+                template<typename Real>
+                void getrf(cusolverdn_handle& handle,
+                    std::size_t M, std::size_t N,
+                    Real* a, index_type* ipiv)
+                {
+                    std::size_t workspace_device = 0;
+                    std::size_t workspace_host = 0;
+                    query<getrf_call<Real>>(handle,
+                        nullptr, M, N, cuda_data_type<Real>::value,
+                        a, M, cuda_data_type<Real>::value,
+                        &workspace_device, &workspace_host);
+                    auto [dev_work, host_work] =
+                        work_buffers<std::uint8_t>(workspace_device, workspace_host);
+                    compute<getrf_call<Real>>(handle,
+                        nullptr, M, N, cuda_data_type<Real>::value,
+                        a, M, ipiv, cuda_data_type<Real>::value,
+                        dev_work.get(), workspace_device,
+                        host_work.get(), workspace_host);
+                }
+            #endif // CUDART_VERSION < 11010
+
+            #if CUDART_VERSION < 11010
+                template<typename Real>
+                void getrs(
+                    cusolverdn_handle& handle,
+                    std::size_t N,
+                    std::size_t Nrhs,
+                    const Real* a,
+                    const index_type* ipiv,
+                    Real* b)
+                {
+                    constexpr cublasOperation_t op = CUBLAS_OP_N;
+                    compute<getrs_call<Real>>(handle,
+                        op, N, Nrhs, a, N, ipiv, b, N);
+                }
+            #else // CUDART_VERSION >= 11010
+                template<typename Real>
+                void getrs(cusolverdn_handle& handle,
+                    std::size_t N, std::size_t Nrhs,
+                    const Real* a, const index_type* ipiv, Real* b)
+                {
+                    constexpr cublasOperation_t op = CUBLAS_OP_N;
+                    compute<getrs_call<Real>>(handle,
+                        nullptr, op, N, Nrhs, cuda_data_type<Real>::value,
+                        a, N, ipiv, cuda_data_type<Real>::value, b, N);
+                }
+            #endif // CUDART_VERSION < 11010
+
+            #if CUDART_VERSION < 11000
+                // cusolverDn<t>potrf()
+                template<typename Real>
+                void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    int lwork = 0;
+                    query<potrf_call<Real>>(handle, uplo, N, a, N, &lwork);
+                    util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
+                    compute<potrf_call<Real>>(handle,
+                        uplo, N, a, N, dev_work.get(), lwork);
+                }
+            #elif CUDART_VERSION >= 11010
+                template<typename Real>
+                void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    std::size_t workspace_device = 0;
+                    std::size_t workspace_host = 0;
+                    query<potrf_call<Real>>(handle,
+                        nullptr, uplo, N, cuda_data_type<Real>::value,
+                        a, N, cuda_data_type<Real>::value,
+                        &workspace_device, &workspace_host);
+                    auto [dev_work, host_work] =
+                        work_buffers<std::uint8_t>(workspace_device, workspace_host);
+                    compute<potrf_call<Real>>(handle,
+                        nullptr, uplo, N, cuda_data_type<Real>::value,
+                        a, N, cuda_data_type<Real>::value,
+                        dev_work.get(), workspace_device,
+                        host_work.get(), workspace_host);
+                }
+            #else // CUDART_VERSION >= 11000
+                // cusolverDnPotrf()
+                template<typename Real>
+                void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
+                {
+                    constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
+                    std::size_t workspace = 0;
+                    query<potrf_call<Real>>(handle,
+                        nullptr, uplo, N, cuda_data_type<Real>::value,
+                        a, N, cuda_data_type<Real>::value,
+                        &workspace);
+                    util::device_buffer<std::uint8_t> dev_work{ workspace };
+                    compute<potrf_call<Real>>(handle,
+                        nullptr, uplo, N, cuda_data_type<Real>::value,
+                        a, N, cuda_data_type<Real>::value,
+                        dev_work.get(), workspace);
+                }
+            #endif // CUDART_VERSION < 11000
+
+                template<typename Real>
+                void gesv(cusolverdn_handle& handle,
+                    std::size_t N, std::size_t Nrhs,
+                    Real* a, Real* b, Real* x, cusolver_int_t* ipiv)
+                {
+                    std::size_t work_bytes = 0;
+                    query<gesv_call<Real>>(handle,
+                        N, Nrhs, nullptr, N, nullptr,
+                        nullptr, N, nullptr, N, nullptr,
+                        &work_bytes);
+                    cusolver_int_t iters = 0;
+                    util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+                    compute<gesv_call<Real>>(handle,
+                        N, Nrhs, a, N, ipiv, b, N, x, N,
+                        dev_work.get(), work_bytes, &iters);
+                    std::cerr << "iterations = " << iters << "\n";
+                }
+
+                template<typename Real>
+                void gels(cusolverdn_handle& handle,
+                    std::size_t M, std::size_t N, std::size_t Nrhs,
+                    Real* a, Real* b, Real* x)
+                {
+                    std::size_t work_bytes = 0;
+                    query<gels_call<Real>>(handle,
+                        M, N, Nrhs,
+                        nullptr, M, nullptr, M, nullptr, N, nullptr,
+                        &work_bytes);
+                    cusolver_int_t iters = 0;
+                    util::device_buffer<std::uint8_t> dev_work{ work_bytes };
+                    compute<gels_call<Real>>(handle,
+                        M, N, Nrhs, a, M, b, M, x, N,
+                        dev_work.get(), work_bytes, &iters);
+                    std::cerr << "iterations = " << iters << "\n";
+                }
+            }
+
             template<typename Real>
             NO_INLINE NO_CLONE void trtri(
                 cusolverdn_handle& handle, std::size_t N, Real* a)
             {
-                using call = trtri_call<Real>;
-                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
-                constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
-
                 tp::sampler smp(g_tpr);
-                int info = 0;
-                int lwork = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = call::query(handle, uplo, diag, N, a, N, &lwork);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-                status = call::compute(
-                    handle, uplo, diag, N, a, N, dev_work.get(), lwork, dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
+                impl::trtri(handle, N, a);
             }
-        #else // CUDART_VERSION >= 11040
-            template<typename Real>
-            NO_INLINE NO_CLONE void trtri(
-                cusolverdn_handle& handle, std::size_t N, Real* a)
-            {
-                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
-                constexpr cublasDiagType_t diag = CUBLAS_DIAG_NON_UNIT;
 
-                tp::sampler smp(g_tpr);
-
-                int info = 0;
-                std::size_t workspace_device = 0;
-                std::size_t workspace_host = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = trtri_call<Real>::query(handle, uplo, diag, N,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    &workspace_device, &workspace_host);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(trtri_call<Real>::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<std::uint8_t> dev_work{ workspace_device };
-                util::buffer<std::uint8_t> host_work;
-                if (workspace_host)
-                    host_work = util::buffer<std::uint8_t>{ workspace_host };
-
-                status = trtri_call<Real>::compute(handle, uplo, diag, N,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    dev_work.get(), workspace_device,
-                    host_work.get(), workspace_host,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(trtri_call<Real>::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-            }
-        #endif // CUDART_VERSION < 11040
-
-        #if CUDART_VERSION < 11010
             template<typename Real>
             NO_INLINE NO_CLONE void getrf(
                 cusolverdn_handle& handle,
@@ -379,73 +529,10 @@ namespace
                 Real* a,
                 index_type* ipiv)
             {
-                using call = getrf_call<Real>;
                 tp::sampler smp(g_tpr);
-                int info = 0;
-                int lwork = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = call::query(handle, M, N, a, M, &lwork);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-                status = call::compute(
-                    handle, M, N, a, M, dev_work.get(), ipiv, dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
+                impl::getrf(handle, M, N, a, ipiv);
             }
-        #else // CUDART_VERSION >= 11010
-            template<typename Real>
-            NO_INLINE NO_CLONE void getrf(
-                cusolverdn_handle& handle,
-                std::size_t M,
-                std::size_t N,
-                Real* a,
-                index_type* ipiv)
-            {
-                tp::sampler smp(g_tpr);
-                int info = 0;
-                std::size_t workspace_device = 0;
-                std::size_t workspace_host = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = getrf_call<Real>::query(handle, nullptr, M, N,
-                    cuda_data_type<Real>::value,
-                    a, M,
-                    cuda_data_type<Real>::value,
-                    &workspace_device,
-                    &workspace_host);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(getrf_call<Real>::query_str, status);
 
-                smp.do_sample();
-
-                util::device_buffer<std::uint8_t> dev_work{ workspace_device };
-                util::buffer<std::uint8_t> host_work;
-                if (workspace_host)
-                    host_work = util::buffer<std::uint8_t>{ workspace_host };
-
-                status = getrf_call<Real>::compute(handle, nullptr, M, N,
-                    cuda_data_type<Real>::value,
-                    a, M,
-                    ipiv,
-                    cuda_data_type<Real>::value,
-                    dev_work.get(), workspace_device,
-                    host_work.get(), workspace_host,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(getrf_call<Real>::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-            }
-        #endif // CUDART_VERSION < 11010
-
-        #if CUDART_VERSION < 11010
             template<typename Real>
             NO_INLINE NO_CLONE void getrs(
                 cusolverdn_handle& handle,
@@ -455,148 +542,17 @@ namespace
                 const index_type* ipiv,
                 Real* b)
             {
-                constexpr cublasOperation_t op = CUBLAS_OP_N;
                 tp::sampler smp(g_tpr);
-                int info = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = getrs_call<Real>::compute(
-                    handle, op, N, Nrhs, a, N, ipiv, b, N, dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(getrs_call<Real>::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
+                impl::getrs(handle, N, Nrhs, a, ipiv, b);
             }
-        #else // CUDART_VERSION >= 11010
-            template<typename Real>
-            NO_INLINE NO_CLONE void getrs(
-                cusolverdn_handle& handle,
-                std::size_t N,
-                std::size_t Nrhs,
-                const Real* a,
-                const index_type* ipiv,
-                Real* b)
-            {
-                constexpr cublasOperation_t op = CUBLAS_OP_N;
-                tp::sampler smp(g_tpr);
-                int info = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = getrs_call<Real>::compute(handle, nullptr, op, N, Nrhs,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    ipiv,
-                    cuda_data_type<Real>::value,
-                    b, N,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(getrs_call<Real>::compute_str, status);
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-            }
-        #endif // CUDART_VERSION < 11010
 
-        #if CUDART_VERSION < 11000
-            // cusolverDn<t>potrf()
-            template<typename Real>
-            NO_INLINE NO_CLONE void potrf(cusolverdn_handle& handle, std::size_t N, Real* a)
-            {
-                using call = potrf_call<Real>;
-                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
-                tp::sampler smp(g_tpr);
-                int info = 0;
-                int lwork = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = call::query(handle, uplo, N, a, N, &lwork);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<Real> dev_work{ static_cast<std::size_t>(lwork) };
-
-                status = call::compute(
-                    handle, uplo, N, a, N, dev_work.get(), lwork, dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-            }
-        #elif CUDART_VERSION >= 11010
             template<typename Real>
             NO_INLINE NO_CLONE void potrf(
                 cusolverdn_handle& handle, std::size_t N, Real* a)
             {
-                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
                 tp::sampler smp(g_tpr);
-                int info = 0;
-                std::size_t workspace_device = 0;
-                std::size_t workspace_host = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = potrf_call<Real>::query(handle, nullptr, uplo, N,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    cuda_data_type<Real>::value,
-                    &workspace_device,
-                    &workspace_host);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(potrf_call<Real>::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<std::uint8_t> dev_work{ workspace_device };
-                util::buffer<std::uint8_t> host_work;
-                if (workspace_host)
-                    host_work = util::buffer<std::uint8_t>{ workspace_host };
-
-                status = potrf_call<Real>::compute(handle, nullptr, uplo, N,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    cuda_data_type<Real>::value,
-                    dev_work.get(), workspace_device,
-                    host_work.get(), workspace_host,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(potrf_call<Real>::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
+                impl::potrf(handle, N, a);
             }
-        #else // CUDART_VERSION >= 11000
-            // cusolverDnPotrf()
-            template<typename Real>
-            NO_INLINE NO_CLONE void potrf(
-                cusolverdn_handle& handle, std::size_t N, Real* a)
-            {
-                constexpr cublasFillMode_t uplo = CUBLAS_FILL_MODE_LOWER;
-                tp::sampler smp(g_tpr);
-                int info = 0;
-                std::size_t workspace = 0;
-                util::device_buffer dev_info{ &info, &info + 1 };
-                auto status = potrf_call<Real>::query(handle, nullptr, uplo, N,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    cuda_data_type<Real>::value,
-                    &workspace);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(potrf_call<Real>::query_str, status);
-
-                smp.do_sample();
-
-                util::device_buffer<std::uint8_t> dev_work{ workspace };
-                status = potrf_call<Real>::compute(handle, nullptr, uplo, N,
-                    cuda_data_type<Real>::value,
-                    a, N,
-                    cuda_data_type<Real>::value,
-                    dev_work.get(), workspace,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(potrf_call<Real>::compute_str, status);
-
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-            }
-        #endif // CUDART_VERSION < 11000
 
         #if CUDART_VERSION < 10020
             template<typename Real>
@@ -623,33 +579,8 @@ namespace
                 Real* x,
                 cusolver_int_t* ipiv)
             {
-                using call = gesv_call<Real>;
                 tp::sampler smp(g_tpr);
-                cusolver_int_t info = 0;
-                std::size_t work_bytes = 0;
-                util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
-                auto status = call::query(handle, N, Nrhs,
-                    nullptr, N, nullptr, nullptr, N, nullptr, N, nullptr, &work_bytes);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::query_str, status);
-
-                smp.do_sample();
-
-                cusolver_int_t iters = 0;
-                util::device_buffer<std::uint8_t> dev_work{ work_bytes };
-                status = call::compute(handle, N, Nrhs,
-                    a, N,
-                    ipiv,
-                    b, N,
-                    x, N,
-                    dev_work.get(), work_bytes,
-                    &iters,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::compute_str, status);
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-                std::cerr << "iterations = " << iters << "\n";
+                impl::gesv(handle, N, Nrhs, a, b, x, ipiv);
             }
         #endif // CUDART_VERSION < 10020
 
@@ -678,32 +609,8 @@ namespace
                 Real* b,
                 Real* x)
             {
-                using call = gels_call<Real>;
                 tp::sampler smp(g_tpr);
-                std::size_t work_bytes = 0;
-                cusolver_int_t info = 0;
-                util::device_buffer<cusolver_int_t> dev_info{ &info, &info + 1 };
-                auto status = call::query(handle, M, N, Nrhs,
-                    nullptr, M, nullptr, M, nullptr, N, nullptr, &work_bytes);
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::query_str, status);
-
-                smp.do_sample();
-
-                cusolver_int_t iters = 0;
-                util::device_buffer<std::uint8_t> dev_work{ work_bytes };
-                status = call::compute(handle, M, N, Nrhs,
-                    a, M,
-                    b, M,
-                    x, N,
-                    dev_work.get(), work_bytes,
-                    &iters,
-                    dev_info.get());
-                if (status != CUSOLVER_STATUS_SUCCESS)
-                    cusolver_error(call::compute_str, status);
-                util::copy(dev_info, 1, &info);
-                handle_error(info);
-                std::cerr << "iterations = " << iters << "\n";
+                impl::gels(handle, M, N, Nrhs, a, b, x);
             }
         #endif // CUDART_VERSION < 11000
         }
