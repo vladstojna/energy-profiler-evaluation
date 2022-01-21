@@ -211,19 +211,19 @@ namespace
         template<typename T>
         struct potrf_call
         {
-            static constexpr auto compute = cusolverDnPotrf;
-            static constexpr auto compute_str = "cusolverDnPotrf";
-            static constexpr auto query = cusolverDnPotrf_bufferSize;
-            static constexpr auto query_str = "cusolverDnPotrf_bufferSize";
+            static constexpr auto compute = cusolverDnXpotrf;
+            static constexpr auto compute_str = "cusolverDnXpotrf";
+            static constexpr auto query = cusolverDnXpotrf_bufferSize;
+            static constexpr auto query_str = "cusolverDnXpotrf_bufferSize";
         };
     #else // CUDART_VERSION >= 11000
         template<typename T>
         struct potrf_call
         {
-            static constexpr auto compute = cusolverDnXpotrf;
-            static constexpr auto compute_str = "cusolverDnXpotrf";
-            static constexpr auto query = cusolverDnXpotrf_bufferSize;
-            static constexpr auto query_str = "cusolverDnXpotrf_bufferSize";
+            static constexpr auto compute = cusolverDnPotrf;
+            static constexpr auto compute_str = "cusolverDnPotrf";
+            static constexpr auto query = cusolverDnPotrf_bufferSize;
+            static constexpr auto query_str = "cusolverDnPotrf_bufferSize";
         };
     #endif // CUDART_VERSION < 11000
     #endif // defined(USE_ITERATIONS) && !defined(DO_COMPUTATION)
