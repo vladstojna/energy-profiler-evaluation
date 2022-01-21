@@ -27,6 +27,10 @@ namespace
 {
     tp::printer g_tpr;
 
+#if defined(USE_ITERATIONS)
+    std::size_t g_iters;
+#endif
+
     struct compute_params
     {
         std::size_t M = 0;
@@ -928,6 +932,7 @@ namespace
                 check_positive(params.M, "m");
                 util::to_scalar(argv[3], params.N);
                 check_positive(params.N, "n");
+                get_iterations(argc, argv, 4);
             }
             else if (func == dgetrs || func == sgetrs ||
                 func == dgesv || func == sgesv)
@@ -938,6 +943,7 @@ namespace
                 check_positive(params.N, "n");
                 util::to_scalar(argv[3], params.Nrhs);
                 check_positive(params.Nrhs, "n_rhs");
+                get_iterations(argc, argv, 4);
             }
             else if (func == dgels || func == sgels)
             {
@@ -951,6 +957,7 @@ namespace
                 check_positive(params.Nrhs, "n_rhs");
                 if (params.N > params.M)
                     throw std::invalid_argument("n must not be greater than m");
+                get_iterations(argc, argv, 5);
             }
             else if (func == dtrtri || func == strtri ||
                 func == dpotrf || func == spotrf)
@@ -959,6 +966,7 @@ namespace
                     throw_too_few(prog, op_type);
                 util::to_scalar(argv[2], params.N);
                 check_positive(params.N, "n");
+                get_iterations(argc, argv, 3);
             }
         }
 
@@ -999,6 +1007,24 @@ namespace
                 .append(op_type));
         }
 
+    #if defined(USE_ITERATIONS)
+        static void usage(const char* prog)
+        {
+            std::cerr << "Usage:\n"
+                << "\t" << prog << " {dtrtri,strtri} <n> <iters>\n"
+                << "\t" << prog << " {dpotrf,spotrf} <n> <iters>\n"
+                << "\t" << prog << " {dgetrf,sgetrf} <m> <n> <iters>\n"
+                << "\t" << prog << " {dgetrs,sgetrs,dgesv,sgesv} <n> <n_rhs> <iters>\n"
+                << "\t" << prog << " {dgels,sgels} <n> <m> <n_rhs> <iters>\n";
+        }
+
+        static void get_iterations(int argc, const char* const* argv, int idx)
+        {
+            if (argc > idx)
+                util::to_scalar(argv[idx], g_iters);
+            check_positive(g_iters, "iters");
+        }
+    #else // !defined(USE_ITERATIONS)
         static void usage(const char* prog)
         {
             std::cerr << "Usage:\n"
@@ -1008,6 +1034,9 @@ namespace
                 << "\t" << prog << " {dgetrs,sgetrs,dgesv,sgesv} <n> <n_rhs>\n"
                 << "\t" << prog << " {dgels,sgels} <n> <m> <n_rhs>\n";
         }
+
+        static void get_iterations(int, const char* const*, int) {}
+    #endif // defined(USE_ITERATIONS)
     };
 }
 
