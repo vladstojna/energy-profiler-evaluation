@@ -152,6 +152,29 @@ namespace util
     template<typename Iter>
     device_buffer(Iter, Iter)->device_buffer<typename std::iterator_traits<Iter>::value_type>;
 
+    template<typename T>
+    struct device_buffer_view
+    {
+        using value_type = T;
+        using size_type = std::size_t;
+
+        const value_type* data;
+        size_type size;
+
+        explicit device_buffer_view(const value_type* data, size_type size) noexcept :
+            data{ data },
+            size{ size }
+        {}
+
+        explicit device_buffer_view() noexcept :
+            device_buffer_view{ nullptr, 0 }
+        {}
+
+        device_buffer_view(const device_buffer<value_type>& buffer) noexcept :
+            device_buffer_view{ buffer.get(), buffer.size() }
+        {}
+    };
+
     template<typename InputIt, typename T,
         typename = std::enable_if_t<detail::is_iterator_compatible<InputIt, T>::value>
     > void copy(InputIt start, InputIt end, device_buffer<T>& into)
@@ -170,11 +193,24 @@ namespace util
     }
 
     template<typename T>
-    void copy(
-        const device_buffer<T>& from,
-        typename device_buffer<T>::size_type count,
+    void copy(const device_buffer_view<T>& from,
+        typename device_buffer_view<T>::size_type count,
         device_buffer<T>& into)
     {
-        copy_impl(into.get(), from.get(), count, detail::device_to_device{});
+        copy_impl(into.get(), from.data, count, detail::device_to_device{});
+    }
+
+    template<typename T>
+    void copy(const device_buffer_view<T>& from, device_buffer<T>& into)
+    {
+        copy(from, from.size, into);
+    }
+
+    template<typename T>
+    void zero(device_buffer<T>& x)
+    {
+        auto res = cudaMemset(x.get(), 0, x.size() * sizeof(T));
+        if (res != cudaSuccess)
+            throw device_exception(get_cuda_error_str("cudaMemset error", res));
     }
 }
