@@ -167,7 +167,7 @@ namespace
                     for (size_t i = 0; i < g_iters; i++)
                     {
                         std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
-                        std::ignore = std::copy(a, b + b2.size(), std::begin(b2));
+                        std::ignore = std::copy(b, b + b2.size(), std::begin(b2));
                         generic_solver<gesv_caller<Real>>(
                             LAPACK_COL_MAJOR, N, Nrhs, a2.get(), N, ipiv, b2.get(), N);
                     }
@@ -181,7 +181,7 @@ namespace
                     for (size_t i = 0; i < g_iters; i++)
                     {
                         std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
-                        std::ignore = std::copy(a, b + b2.size(), std::begin(b2));
+                        std::ignore = std::copy(b, b + b2.size(), std::begin(b2));
                         query_solver<gels_caller<Real>>(
                             LAPACK_COL_MAJOR, 'N', M, N, Nrhs, a2.get(), M,
                             b2.get(), std::max(N, M));
@@ -227,7 +227,7 @@ namespace
                 template<typename Real>
                 void tptri(Real* a, size_t N)
                 {
-                    util::buffer<Real> a2{ N * N };
+                    util::buffer<Real> a2{ N * (N + 1) / 2 };
                     for (size_t i = 0; i < g_iters; i++)
                     {
                         std::ignore = std::copy(a, a + a2.size(), std::begin(a2));
