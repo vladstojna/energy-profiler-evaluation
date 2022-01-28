@@ -14,6 +14,8 @@ incls := ../timeprinter/include ../include
 libs  := ../timeprinter/lib
 cpp   :=
 
+USE_ITERATIONS ?=
+DO_COMPUTATION ?=
 NO_LAPACKE_SYMS ?=
 USE_RPATH ?=
 rpath :=
@@ -43,6 +45,13 @@ rpath += -Wl,-rpath,$(OPENBLAS_ROOT)/lib
 endif # USE_RPATH
 
 endif # ($(impl), $(mkl))
+
+ifneq (,$(USE_ITERATIONS))
+cpp += USE_ITERATIONS
+endif # (,$(USE_ITERATIONS))
+ifneq (,$(DO_COMPUTATION))
+cpp += DO_COMPUTATION
+endif # (,$(DO_COMPUTATION))
 
 cc      := g++
 cflags  := -Wall -Wextra -Wunknown-pragmas -pedantic -fPIE -g
